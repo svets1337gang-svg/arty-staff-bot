@@ -172,13 +172,18 @@ class SheetsManager:
     
     def find_user_by_email(self, email):
         try:
-            if not email:
+            target = (email or '').strip().casefold()
+            if not target:
                 return None
-            cell = self.sheet.find(email)
-            if cell:
-                return self.get_user_data(cell.row)
-        except:
-            return None
+            all_values = self.sheet.get_all_values()
+            for row_num, row in enumerate(all_values, start=1):
+                if row_num == 1 or len(row) < 6:
+                    continue
+                candidate = (row[5] or '').strip().casefold()
+                if candidate == target:
+                    return self.get_user_data(row_num)
+        except Exception as e:
+            print(f"❌ Ошибка поиска email '{email}': {e}")
         return None
     
     def remove_penalty(self, nick: str, penalty_type: str) -> dict:
@@ -241,40 +246,101 @@ class SheetsManager:
             'new_count': new_count_str
         }
     
+    @staticmethod
+    def _extract_google_file_id(value: str) -> str:
+        """Извлекает ID Google Drive/Forms из ID или полной ссылки."""
+        value = (value or '').strip()
+        if not value:
+            return ''
+
+        # Поддержка:
+        # https://docs.google.com/forms/d/FORM_ID/edit
+        # https://docs.google.com/forms/d/FORM_ID/viewform
+        # https://docs.google.com/forms/d/e/FORM_ID/viewform
+        # https://drive.google.com/file/d/FORM_ID/view
+        patterns = (
+            r'/forms/d/e/([A-Za-z0-9_-]+)',
+            r'/forms/d/([A-Za-z0-9_-]+)',
+            r'/file/d/([A-Za-z0-9_-]+)',
+            r'/d/([A-Za-z0-9_-]+)',
+        )
+        for pattern in patterns:
+            match = re.search(pattern, value)
+            if match:
+                return match.group(1)
+
+        # Если в .env уже указан чистый ID.
+        return value.split('?')[0].split('#')[0].strip('/')
+
+    @staticmethod
+    def _same_email(left: str, right: str) -> bool:
+        return bool(left and right and left.strip().casefold() == right.strip().casefold())
+
     def remove_form_access(self, email: str) -> dict:
+        form_id = ''
         try:
-            form_id = os.getenv('GOOGLE_FORM_ID')
+            raw_form_id = os.getenv('GOOGLE_FORM_ID', '')
+            form_id = self._extract_google_file_id(raw_form_id)
             if not form_id:
                 return {'success': False, 'message': '⚠️ ID формы не указан в .env'}
-            
-            if '/e/' in form_id:
-                form_id = form_id.split('/e/')[-1].split('/')[0]
-            
+
+            target_email = email.strip()
+            if not target_email:
+                return {'success': False, 'message': '⚠️ Email сотрудника пустой.'}
+
             creds = Credentials.from_service_account_file('credentials.json')
-            drive_service = build('drive', 'v3', credentials=creds)
-            
+            drive_service = build('drive', 'v3', credentials=creds, cache_discovery=False)
+
             permissions = drive_service.permissions().list(
                 fileId=form_id,
-                fields='permissions(id, emailAddress, role)'
+                fields='permissions(id,emailAddress,type,role,domain,displayName,deleted)',
+                supportsAllDrives=True
             ).execute()
-            
+
+            removed = 0
+            inherited = []
+
             for perm in permissions.get('permissions', []):
-                if perm.get('emailAddress') == email:
+                perm_email = perm.get('emailAddress', '')
+                if perm.get('deleted') or not self._same_email(perm_email, target_email):
+                    continue
+
+                # Удаляем все найденные индивидуальные разрешения, а не только первое.
+                try:
                     drive_service.permissions().delete(
                         fileId=form_id,
-                        permissionId=perm['id']
+                        permissionId=perm['id'],
+                        supportsAllDrives=True
                     ).execute()
-                    return {'success': True, 'message': f'✅ Доступ к форме для {email} удалён.'}
-            
-            return {'success': True, 'message': f'⚠️ Доступ к форме для {email} не найден.'}
-        
+                    removed += 1
+                except Exception as delete_error:
+                    # inheritedPermissions нельзя удалить напрямую.
+                    inherited.append(str(delete_error))
+
+            if removed:
+                suffix = ''
+                if inherited:
+                    suffix = ' Некоторые права формы являются унаследованными и не могут быть удалены напрямую.'
+                return {
+                    'success': True,
+                    'message': f'✅ Доступ к форме для {target_email} удалён ({removed} разреш.).{suffix}'
+                }
+
+            if inherited:
+                return {
+                    'success': False,
+                    'message': f'❌ Для {target_email} найдено унаследованное право доступа к форме. Его нельзя удалить через это разрешение — проверьте общий доступ/группу формы.'
+                }
+
+            return {'success': True, 'message': f'⚠️ Индивидуальный доступ к форме для {target_email} не найден.'}
+
         except Exception as e:
-            if 'File not found' in str(e):
+            error_text = str(e)
+            if 'File not found' in error_text or 'notFound' in error_text:
                 return {'success': False, 'message': f'❌ Форма с ID {form_id} не найдена. Проверьте GOOGLE_FORM_ID.'}
-            elif '403' in str(e):
-                return {'success': False, 'message': f'❌ Нет прав на управление формой. Добавьте сервисный аккаунт как редактора формы.'}
-            else:
-                return {'success': False, 'message': f'❌ Ошибка при удалении доступа к форме: {str(e)}'}
+            if '403' in error_text or 'insufficientPermissions' in error_text:
+                return {'success': False, 'message': '❌ Нет прав на изменение доступа к форме. Дайте сервисному аккаунту доступ редактора к форме.'}
+            return {'success': False, 'message': f'❌ Ошибка при удалении доступа к форме: {error_text}'}
     
     def full_remove_user(self, email: str) -> dict:
         try:
@@ -297,18 +363,17 @@ class SheetsManager:
                     fields='permissions(id, emailAddress)'
                 ).execute()
                 
-                permission_id = None
+                removed_table = 0
                 for perm in permissions.get('permissions', []):
-                    if perm.get('emailAddress') == email:
-                        permission_id = perm.get('id')
-                        break
-                
-                if permission_id:
-                    drive_service.permissions().delete(
-                        fileId=GOOGLE_SHEETS_ID,
-                        permissionId=permission_id
-                    ).execute()
-                    drive_message = f"✅ Доступ к таблице для {email} удалён."
+                    if self._same_email(perm.get('emailAddress', ''), email):
+                        drive_service.permissions().delete(
+                            fileId=GOOGLE_SHEETS_ID,
+                            permissionId=perm['id']
+                        ).execute()
+                        removed_table += 1
+
+                if removed_table:
+                    drive_message = f"✅ Доступ к таблице для {email} удалён ({removed_table} разреш.)."
                 else:
                     drive_message = f"⚠️ Доступ к таблице для {email} не найден."
             except Exception as e:
