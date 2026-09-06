@@ -605,6 +605,75 @@ async def refresh_staff(interaction: discord.Interaction):
     except Exception as e:
         print(f"❌ Ошибка в обновитьсостав: {e}")
 
+# 11. /help
+@bot.tree.command(name="help", description="Показать список команд и информацию о боте")
+async def help_command(interaction: discord.Interaction):
+    try:
+        await interaction.response.defer(thinking=True)
+        
+        embed = discord.Embed(
+            title="🤖 ArtyStaff Bot",
+            description="Бот для автоматизации управления персоналом FT",
+            color=discord.Color.blue(),
+            timestamp=datetime.datetime.now()
+        )
+        embed.set_thumbnail(url=bot.user.avatar.url if bot.user.avatar else None)
+        embed.add_field(
+            name="📊 Статистика",
+            value="`/stat @ник` - Показать статистику игрока",
+            inline=False
+        )
+        embed.add_field(
+            name="⚖️ Наказания",
+            value=(
+                "`/варн @ник причина [кол-во]` - Выдать варн(ы)\n"
+                "`/устник @ник причина [кол-во]` - Выдать устник(и)\n"
+                "`/снятьварн @ник` - Снять варн за 100 баллов\n"
+                "`/снятьустник @ник` - Снять устник за 50 баллов"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="👥 Управление составом",
+            value=(
+                "`/принять @ник должность` - Принять нового сотрудника\n"
+                "`/снять @ник причина` - Снять сотрудника\n"
+                "`/повысить @ник должность` - Повысить сотрудника\n"
+                "`/удалитьсостав @ник` - Удалить из состава\n"
+                "`/обновитьсостав` - Обновить сообщение с составом"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="📌 Доступ к командам",
+            value=(
+                "**Обзванивающий:** `/принять` (только Стажер и Мл. Поддержка)\n"
+                "**Зам. Куратора+:** Все команды управления составом\n"
+                "**Все КП:** `/stat`"
+            ),
+            inline=False
+        )
+        embed.add_field(
+            name="📋 Система баллов",
+            value=(
+                "Снятие устника - **50 баллов**\n"
+                "Снятие варна - **100 баллов**"
+            ),
+            inline=False
+        )
+        embed.set_footer(
+            text="ArtyStaff Bot | ArtyGrief",
+            icon_url=interaction.guild.icon.url if interaction.guild.icon else None
+        )
+        
+        await interaction.followup.send(embed=embed)
+        
+    except discord.errors.NotFound:
+        print("⚠️ Взаимодействие для help истекло")
+    except Exception as e:
+        print(f"❌ Ошибка в help: {e}")
+        await interaction.followup.send(f"❌ Ошибка: {e}")
+
 # ============ АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ СОСТАВА ============
 
 async def update_staff_message():
