@@ -104,56 +104,89 @@ class SheetsManager:
         return None
     
     def remove_penalty(self, nick: str, penalty_type: str) -> dict:
-        user_data = self.find_user_by_nick(nick)
-        if not user_data:
-            return {'success': False, 'message': f'❌ Пользователь {nick} не найден в таблице.'}
-        
-        costs = {
-            'устник': 50,
-            'варн': 100
-        }
-        
-        if penalty_type not in costs:
-            return {'success': False, 'message': f'❌ Неизвестный тип взыскания: {penalty_type}. Доступно: устник, варн'}
-        
-        # ===== ИСПРАВЛЕНО: читаем баллы через float =====
-        points_str = str(user_data['points']).strip()
-        try:
-            current_points = int(float(points_str))
-        except (ValueError, TypeError):
-            current_points = 0
-        
-        print(f"🔍 Отладка: ник={nick}, points_str='{points_str}', current_points={current_points}")
-        
-        count_field = 'warnings_count' if penalty_type == 'устник' else 'warns_count'
-        current_count = user_data[count_field]
-        
-        if current_count <= 0:
-            return {'success': False, 'message': f'❌ У сотрудника нет {penalty_type}ов для снятия.'}
-        
-        cost = costs[penalty_type]
-        
-        if current_points < cost:
-            return {
-                'success': False,
-                'message': f'❌ Недостаточно баллов для снятия {penalty_type}. Требуется {cost}, в наличии: {current_points}.'
-            }
-        
-        new_points = current_points - cost
-        new_count = current_count - 1
-        new_count_str = f'{new_count}/3'
-        
-        row = user_data['row']
-        self.update_user(row, 3, str(new_points))
-        col = 4 if penalty_type == 'варн' else 5
-        self.update_user(row, col, new_count_str)
-        
+    print(f"\n===== ОТЛАДКА remove_penalty =====")
+    print(f"1. Ищем пользователя: {nick}")
+    
+    user_data = self.find_user_by_nick(nick)
+    if not user_data:
+        return {'success': False, 'message': f'❌ Пользователь {nick} не найден в таблице.'}
+    
+    print(f"2. user_data получен:")
+    print(f"   - nick: {user_data['nick']}")
+    print(f"   - position: {user_data['position']}")
+    print(f"   - points: '{user_data['points']}' (тип: {type(user_data['points'])})")
+    print(f"   - warns: {user_data['warns']}")
+    print(f"   - warnings: {user_data['warnings']}")
+    print(f"   - email: {user_data['email']}")
+    
+    costs = {
+        'устник': 50,
+        'варн': 100
+    }
+    
+    if penalty_type not in costs:
+        return {'success': False, 'message': f'❌ Неизвестный тип взыскания: {penalty_type}. Доступно: устник, варн'}
+    
+    # ===== ПРОБУЕМ ПРОЧИТАТЬ БАЛЛЫ РАЗНЫМИ СПОСОБАМИ =====
+    points_str = str(user_data['points']).strip()
+    print(f"3. points_str: '{points_str}'")
+    
+    # Способ 1: через float
+    try:
+        current_points = int(float(points_str))
+        print(f"4. Способ 1 (float): {current_points}")
+    except Exception as e:
+        print(f"4. Способ 1 (float) ошибка: {e}")
+        current_points = 0
+    
+    # Способ 2: через int (если нет .0)
+    try:
+        current_points_int = int(points_str)
+        print(f"4. Способ 2 (int): {current_points_int}")
+    except Exception as e:
+        print(f"4. Способ 2 (int) ошибка: {e}")
+    
+    # Способ 3: если в таблице формула
+    try:
+        # Если это число с запятой
+        points_str_comma = points_str.replace(',', '.')
+        current_points_comma = int(float(points_str_comma))
+        print(f"4. Способ 3 (с запятой): {current_points_comma}")
+    except Exception as e:
+        print(f"4. Способ 3 (с запятой) ошибка: {e}")
+    
+    print(f"5. Итоговые баллы: {current_points}")
+    print(f"====================================\n")
+    
+    count_field = 'warnings_count' if penalty_type == 'устник' else 'warns_count'
+    current_count = user_data[count_field]
+    
+    if current_count <= 0:
+        return {'success': False, 'message': f'❌ У сотрудника нет {penalty_type}ов для снятия.'}
+    
+    cost = costs[penalty_type]
+    
+    if current_points < cost:
         return {
-            'success': True,
-            'message': f'✅ Снят {penalty_type}. Баллы: {current_points} → {new_points}. Осталось: {new_count_str}',
-            'new_balance': new_points,
-            'new_count': new_count_str
+            'success': False,
+            'message': f'❌ Недостаточно баллов для снятия {penalty_type}. Требуется {cost}, в наличии: {current_points}.'
         }
+    
+    new_points = current_points - cost
+    new_count = current_count - 1
+    new_count_str = f'{new_count}/3'
+    
+    row = user_data['row']
+    self.update_user(row, 3, str(new_points))
+    col = 4 if penalty_type == 'варн' else 5
+    self.update_user(row, col, new_count_str)
+    
+    return {
+        'success': True,
+        'message': f'✅ Снят {penalty_type}. Баллы: {current_points} → {new_points}. Осталось: {new_count_str}',
+        'new_balance': new_points,
+        'new_count': new_count_str
+    }
     
     def remove_form_access(self, email: str) -> dict:
         try:
