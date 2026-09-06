@@ -392,56 +392,76 @@ async def remove_user(interaction, user: discord.Member, reason: str):
 
 # 7. /повысить
 @bot.tree.command(name="повысить", description="Повысить сотрудника")
-@app_commands.describe(user="Игрок", new_position="Новая должность")
+@app_commands.describe(nick="Ник сотрудника (без @)", new_position="Новая должность")
 @has_staff_role_check()
-async def promote(interaction: discord.Interaction, user: discord.Member, new_position: str):
+async def promote(interaction: discord.Interaction, nick: str, new_position: str):
     try:
         await interaction.response.defer(thinking=True)
+        
         if new_position not in ALL_POSITIONS:
             positions_list = "\n".join(ALL_POSITIONS)
             await interaction.followup.send(f"❌ Должность '{new_position}' не найдена.\nДоступные должности:\n{positions_list}")
             return
         
-        clean_nick = normalize_nick(user.display_name)
+        clean_nick = normalize_nick(nick)
         existing = next((m for m in staff_list if m['nick'] == clean_nick), None)
         if not existing:
-            await interaction.followup.send(f"❌ {user.mention} не найден в составе.")
+            await interaction.followup.send(f"❌ {nick} не найден в составе.")
             return
         
         old_position = existing['position']
         existing['position'] = new_position
         save_staff()
         
-        old_role_id = POSITION_TO_ROLE.get(old_position)
-        if old_role_id:
-            old_role = interaction.guild.get_role(old_role_id)
-            if old_role and old_role in user.roles:
-                await user.remove_roles(old_role)
-        new_role_id = POSITION_TO_ROLE.get(new_position)
-        if new_role_id:
-            new_role = interaction.guild.get_role(new_role_id)
-            if new_role:
-                await user.add_roles(new_role)
+        # Ищем пользователя в Discord по нику
+        user = None
+        for member in interaction.guild.members:
+            if normalize_nick(member.display_name) == clean_nick:
+                user = member
+                break
         
+        # Меняем роли, если пользователь найден
+        if user:
+            old_role_id = POSITION_TO_ROLE.get(old_position)
+            if old_role_id:
+                old_role = interaction.guild.get_role(old_role_id)
+                if old_role and old_role in user.roles:
+                    await user.remove_roles(old_role)
+            
+            new_role_id = POSITION_TO_ROLE.get(new_position)
+            if new_role_id:
+                new_role = interaction.guild.get_role(new_role_id)
+                if new_role:
+                    await user.add_roles(new_role)
+            
+            user_mention = user.mention
+        else:
+            user_mention = clean_nick
+            print(f"⚠️ Пользователь {clean_nick} не найден на сервере, роли не менялись")
+        
+        # Отправляем уведомление в канал учёта
         channel = bot.get_channel(CHANNELS['учет_принятых_повышенных'])
         embed = discord.Embed(
-            title="📈 Повышение сотрудника",
+            title="📈 Сотрудник повышен",
             color=discord.Color.gold(),
             timestamp=datetime.datetime.now()
         )
-        embed.add_field(name="1. Пинг сотрудника", value=user.mention, inline=False)
-        embed.add_field(name="2. Ник", value=user.display_name, inline=False)
+        embed.add_field(name="1. Пинг сотрудника", value=user_mention, inline=False)
+        embed.add_field(name="2. Ник", value=clean_nick, inline=False)
         embed.add_field(name="3. Повышен на должность", value=f"[{new_position}]", inline=False)
         embed.add_field(name="4. Кто повысил", value=interaction.user.mention, inline=False)
+        embed.set_footer(text=f"Было: {old_position} → Стало: {new_position}")
         if channel:
             await channel.send(embed=embed)
         
         await update_staff_message()
-        await interaction.followup.send(f"✅ {user.mention} повышен до {new_position}")
+        await interaction.followup.send(f"✅ {nick} повышен до {new_position}")
+        
     except discord.errors.NotFound:
         print("⚠️ Взаимодействие для повысить истекло")
     except Exception as e:
         print(f"❌ Ошибка в повысить: {e}")
+        await interaction.followup.send(f"❌ Ошибка: {e}")
 
 # 8. /принять
 @bot.tree.command(name="принять", description="Принять нового сотрудника в состав")
@@ -554,36 +574,30 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
         await interaction.followup.send(f"❌ Ошибка: {e}")
 
 # 9. /удалитьсостав
-@bot.tree.command(name="удалитьсостав", description="Удалить сотрудника из состава вручную")
-@app_commands.describe(user="Игрок")
+@bot.tree.command(name="удалитьсостав", description="Удалить сотрудника из состава вручную (роли НЕ снимаются)")
+@app_commands.describe(nick="Ник сотрудника (без @)")
 @has_staff_role_check()
-async def remove_staff_manual(interaction: discord.Interaction, user: discord.Member):
+async def remove_staff_manual(interaction: discord.Interaction, nick: str):
     try:
         await interaction.response.defer(thinking=True)
         global staff_list
         
-        clean_nick = normalize_nick(user.display_name)
+        clean_nick = normalize_nick(nick)
         existing = next((m for m in staff_list if m['nick'] == clean_nick), None)
         if not existing:
-            await interaction.followup.send(f"❌ {user.mention} не найден в составе.")
+            await interaction.followup.send(f"❌ {nick} не найден в составе.")
             return
         
         staff_list = [m for m in staff_list if m['nick'] != clean_nick]
         save_staff()
         
-        for role in user.roles:
-            if role.id in ROLES_TO_REMOVE:
-                try:
-                    await user.remove_roles(role)
-                except:
-                    pass
-        
         await update_staff_message()
-        await interaction.followup.send(f"✅ {user.mention} удалён из состава")
+        await interaction.followup.send(f"✅ {nick} удалён из состава (роли не сняты)")
     except discord.errors.NotFound:
         print("⚠️ Взаимодействие для удалитьсостав истекло")
     except Exception as e:
         print(f"❌ Ошибка в удалитьсостав: {e}")
+        await interaction.followup.send(f"❌ Ошибка: {e}")
 
 # 10. /обновитьсостав
 @bot.tree.command(name="обновитьсостав", description="Принудительно обновить сообщение с составом")
@@ -609,15 +623,11 @@ async def refresh_staff(interaction: discord.Interaction):
 @bot.tree.command(name="help", description="Показать список команд и информацию о боте")
 async def help_command(interaction: discord.Interaction):
     try:
-        await interaction.response.defer(thinking=True)
-        
         embed = discord.Embed(
             title="🤖 ArtyStaff Bot",
             description="Бот для автоматизации управления персоналом FT",
-            color=discord.Color.blue(),
-            timestamp=datetime.datetime.now()
+            color=discord.Color.blue()
         )
-        embed.set_thumbnail(url=bot.user.avatar.url if bot.user.avatar else None)
         embed.add_field(
             name="📊 Статистика",
             value="`/stat @ник` - Показать статистику игрока",
@@ -638,8 +648,9 @@ async def help_command(interaction: discord.Interaction):
             value=(
                 "`/принять @ник должность` - Принять нового сотрудника\n"
                 "`/снять @ник причина` - Снять сотрудника\n"
-                "`/повысить @ник должность` - Повысить сотрудника\n"
-                "`/удалитьсостав @ник` - Удалить из состава\n"
+                "`/повысить ник должность` - Повысить сотрудника\n"
+                "`/добавитьсостав ник должность` - Добавить в состав (без уведомлений)\n"
+                "`/удалитьсостав ник` - Удалить из состава (роли НЕ снимаются)\n"
                 "`/обновитьсостав` - Обновить сообщение с составом"
             ),
             inline=False
@@ -661,17 +672,43 @@ async def help_command(interaction: discord.Interaction):
             ),
             inline=False
         )
-        embed.set_footer(
-            text="ArtyStaff Bot | ArtyGrief",
-            icon_url=interaction.guild.icon.url if interaction.guild.icon else None
-        )
+        embed.set_footer(text="ArtyStaff Bot | ArtyGrief")
         
-        await interaction.followup.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
         
-    except discord.errors.NotFound:
-        print("⚠️ Взаимодействие для help истекло")
     except Exception as e:
         print(f"❌ Ошибка в help: {e}")
+        await interaction.response.send_message(f"❌ Ошибка: {e}")
+
+# 12. /добавитьсостав
+@bot.tree.command(name="добавитьсостав", description="Добавить сотрудника в состав вручную (ник без @)")
+@app_commands.describe(nick="Ник сотрудника (без @)", position="Должность")
+@has_staff_role_check()
+async def add_staff_manual(interaction: discord.Interaction, nick: str, position: str):
+    try:
+        await interaction.response.defer(thinking=True)
+        
+        if position not in ALL_POSITIONS:
+            positions_list = "\n".join(ALL_POSITIONS)
+            await interaction.followup.send(f"❌ Должность '{position}' не найдена.\nДоступные должности:\n{positions_list}")
+            return
+        
+        clean_nick = normalize_nick(nick)
+        existing = next((m for m in staff_list if m['nick'] == clean_nick), None)
+        if existing:
+            await interaction.followup.send(f"❌ {nick} уже есть в составе.")
+            return
+        
+        staff_list.append({'nick': clean_nick, 'position': position})
+        save_staff()
+        
+        await update_staff_message()
+        await interaction.followup.send(f"✅ {nick} добавлен в состав как {position}")
+        
+    except discord.errors.NotFound:
+        print("⚠️ Взаимодействие для добавитьсостав истекло")
+    except Exception as e:
+        print(f"❌ Ошибка в добавитьсостав: {e}")
         await interaction.followup.send(f"❌ Ошибка: {e}")
 
 # ============ АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ СОСТАВА ============
