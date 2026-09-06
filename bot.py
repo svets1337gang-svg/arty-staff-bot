@@ -13,7 +13,6 @@ from config import (
     STAT_ROLES, STAFF_ROLES, ACCEPT_ROLES, POSITION_TO_ROLE, ALL_POSITIONS,
     POSITION_ORDER
 )
-)
 from sheets import SheetsManager
 
 # Инициализация бота
@@ -507,23 +506,23 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
         if staff_role:
             await user.add_roles(staff_role)
         
-        # Отправляем уведомление в канал учёта
+        # ===== 1. УВЕДОМЛЕНИЕ В КАНАЛ УЧЁТА =====
         channel = bot.get_channel(CHANNELS['учет_принятых_повышенных'])
-        embed = discord.Embed(
-            title="📥 Принят новый сотрудник",
-            color=discord.Color.green(),
-            timestamp=datetime.datetime.now()
-        )
-        embed.add_field(name="1. Пинг сотрудника", value=user.mention, inline=False)
-        embed.add_field(name="2. Ник", value=user.display_name, inline=False)
-        embed.add_field(name="3. Принят на должность", value=f"[{position}]", inline=False)
-        embed.add_field(name="4. Кто принял", value=interaction.user.mention, inline=False)
         if channel:
+            embed = discord.Embed(
+                title="📥 Принят новый сотрудник",
+                color=discord.Color.green(),
+                timestamp=datetime.datetime.now()
+            )
+            embed.add_field(name="1. Пинг сотрудника", value=user.mention, inline=False)
+            embed.add_field(name="2. Ник", value=user.display_name, inline=False)
+            embed.add_field(name="3. Принят на должность", value=f"[{position}]", inline=False)
+            embed.add_field(name="4. Кто провел обзвон", value=interaction.user.mention, inline=False)
             await channel.send(embed=embed)
         
-        # Отправляем личное сообщение новому сотруднику
+        # ===== 2. ЛИЧНОЕ СООБЩЕНИЕ =====
         try:
-            welcome_message = (
+            dm_message = (
                 f"**👋 Добро пожаловать в команду, {user.mention}!**\n\n"
                 f"Ты был принят на должность **{position}**.\n\n"
                 f"📌 **Для выдачи доступа к таблицам, скинь свою почту** <@&1327267237777768532> или <@&1311678066845679616>.\n\n"
@@ -532,26 +531,12 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
                 f"2. Почта: _ожидается_\n\n"
                 f"Удачи в работе! 🚀"
             )
-            await user.send(welcome_message)
+            await user.send(dm_message)
             print(f"✅ Личное сообщение отправлено {user.display_name}")
         except discord.errors.Forbidden:
             print(f"⚠️ Не удалось отправить личное сообщение {user.display_name} (закрыты ЛС)")
         except Exception as e:
             print(f"❌ Ошибка при отправке ЛС: {e}")
-        
-        # Пингуем игрока в чате
-        try:
-            ping_channel = bot.get_channel(CHANNELS['учет_принятых_повышенных'])
-            if ping_channel:
-                await ping_channel.send(
-                    f"{user.mention}, добро пожаловать! 🎉\n"
-                    f"Для выдачи доступа к таблицам, скинь свою почту <@&1327267237777768532> или <@&1311678066845679616>.\n"
-                    f"**Твои данные:**\n"
-                    f"1. Ник: `{user.display_name}`\n"
-                    f"2. Почта: _ожидается_"
-                )
-        except Exception as e:
-            print(f"❌ Ошибка при пинге: {e}")
         
         # Обновляем состав
         await update_staff_message()
