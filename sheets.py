@@ -6,65 +6,82 @@ from googleapiclient.discovery import build
 import os
 
 def normalize_nick(nick: str) -> str:
-    if not nick:
-        return nick
+    """Нормализует ник перед сравнением с ником из Google Sheets."""
+    if nick is None:
+        return ''
+
+    # Приводим похожие Unicode-символы к единой форме и убираем невидимые
+    # символы, которые часто появляются в Discord-никах/копировании.
+    nick = nick.replace('\u200b', '').replace('\u200c', '').replace('\u200d', '').replace('\ufeff', '')
+    nick = re.sub(r'[\u0000-\u001f\u007f]', '', nick)
+    nick = nick.replace('\xa0', ' ')
+
     nick = re.sub(r'\[[^\]]*\]', '', nick)
     nick = re.sub(r'\([^)]*\)', '', nick)
     nick = re.sub(r'\{[^}]*\}', '', nick)
-    return nick.strip()
+
+    return ' '.join(nick.split()).strip()
+
+
+def nick_key(nick: str) -> str:
+    """Ключ для точного, но регистронезависимого сравнения ника."""
+    import unicodedata
+    return unicodedata.normalize('NFKC', normalize_nick(nick)).casefold()
 
 class SheetsManager:
     def __init__(self):
         self.gc = gspread.service_account(filename='credentials.json')
         self.sheet = self.gc.open_by_key(GOOGLE_SHEETS_ID).worksheet(SHEET_NAME)
     
+    def _find_user_in_rows(self, nick, allow_partial=False):
+        """Ищет пользователя только по первой колонке таблицы (ник)."""
+        target = nick_key(nick)
+        if not target:
+            return None
+
+        all_values = self.sheet.get_all_values()
+
+        # Сначала только точное совпадение. Это основной путь для команд.
+        for row_num, row in enumerate(all_values, start=1):
+            if row_num == 1 or not row or not row[0]:
+                continue
+            if nick_key(row[0]) == target:
+                return self.get_user_data(row_num)
+
+        if not allow_partial:
+            return None
+
+        # Частичный поиск — только запасной вариант и тоже только по колонке A.
+        for row_num, row in enumerate(all_values, start=1):
+            if row_num == 1 or not row or not row[0]:
+                continue
+            table_key = nick_key(row[0])
+            if target in table_key or table_key in target:
+                return self.get_user_data(row_num)
+
+        return None
+
     def find_user_by_nick(self, nick):
         try:
-            clean_nick = normalize_nick(nick)
-            cell = self.sheet.find(clean_nick)
-            if cell:
-                row = cell.row
-                return self.get_user_data(row)
-        except:
+            user = self._find_user_in_rows(nick, allow_partial=False)
+            if user:
+                print(f"✅ Ник найден точно: '{user['nick']}' (строка {user['row']})")
+            return user
+        except Exception as e:
+            print(f"❌ Ошибка поиска ника '{nick}': {e}")
             return None
-        return None
-    
+
     def find_user_by_nick_fuzzy(self, nick):
-        """
-        Умный поиск пользователя по нику с нормализацией.
-        """
+        """Ищет по нику с точным совпадением, затем с безопасным частичным."""
         try:
             clean_nick = normalize_nick(nick)
-            print(f"🔍 Ищем: {clean_nick}")
-            
-            # Пробуем найти точное совпадение
-            cell = self.sheet.find(clean_nick)
-            if cell:
-                print(f"✅ Найдено точное совпадение в строке {cell.row}")
-                return self.get_user_data(cell.row)
-            
-            # Если точного нет — ищем частичное совпадение
-            all_values = self.sheet.get_all_values()
-            print(f"📋 Всего строк в таблице: {len(all_values)}")
-            
-            found_nicks = []
-            for row_num, row in enumerate(all_values, start=1):
-                if row_num == 1:  # Пропускаем заголовки
-                    continue
-                if not row or not row[0]:
-                    continue
-                
-                table_nick = row[0].strip().lower()
-                found_nicks.append(table_nick)
-                search_nick = clean_nick.lower()
-                
-                # Проверяем вхождения
-                if search_nick in table_nick or table_nick in search_nick:
-                    print(f"✅ Найдено частичное совпадение: '{row[0]}' в строке {row_num}")
-                    return self.get_user_data(row_num)
-            
-            print(f"❌ Пользователь {nick} не найден")
-            print(f"📋 Ники в таблице: {found_nicks[:10]}...")
+            print(f"🔍 Ищем ник: '{clean_nick}'")
+            user = self._find_user_in_rows(clean_nick, allow_partial=True)
+            if user:
+                print(f"✅ Найден пользователь '{user['nick']}' в строке {user['row']}")
+                return user
+
+            print(f"❌ Пользователь '{nick}' не найден")
             return None
         except Exception as e:
             print(f"❌ Ошибка поиска: {e}")
@@ -87,10 +104,30 @@ class SheetsManager:
         }
     
     def parse_count(self, value):
-        if not value:
+        if value is None:
             return 0
-        parts = value.split('/')
-        return int(parts[0]) if parts else 0
+        match = re.search(r'[-+]?\d+', str(value).replace('\xa0', ' '))
+        return int(match.group()) if match else 0
+
+    def parse_points(self, value):
+        """Безопасно преобразует баллы из значения Google Sheets в целое число."""
+        if value is None:
+            return 0
+
+        text = str(value).strip().replace('\xa0', '').replace(' ', '')
+        if not text:
+            return 0
+
+        # Поддерживаем как 1000.5, так и 1000,5; лишний текст игнорируем.
+        match = re.search(r'-?\d+(?:[.,]\d+)?', text)
+        if not match:
+            return 0
+
+        number = match.group().replace(',', '.')
+        try:
+            return int(float(number))
+        except (TypeError, ValueError):
+            return 0
     
     def update_user(self, row, column, value):
         self.sheet.update_cell(row, column, value)
@@ -170,15 +207,8 @@ class SheetsManager:
         
         points_str = str(user_data['points']).strip()
         print(f"3. points_str: '{points_str}'")
-        
-        try:
-            current_points = int(float(points_str))
-            print(f"4. Способ 1 (float): {current_points}")
-        except Exception as e:
-            print(f"4. Способ 1 (float) ошибка: {e}")
-            current_points = 0
-        
-        print(f"5. Итоговые баллы: {current_points}")
+        current_points = self.parse_points(points_str)
+        print(f"4. Итоговые баллы: {current_points}")
         print(f"====================================\n")
         
         count_field = 'warnings_count' if penalty_type == 'устник' else 'warns_count'
