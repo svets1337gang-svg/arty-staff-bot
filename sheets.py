@@ -222,6 +222,43 @@ class SheetsManager:
                 return {'success': False, 'message': f'❌ Нет прав на управление формой. Добавьте сервисный аккаунт как редактора формы.'}
             else:
                 return {'success': False, 'message': f'❌ Ошибка при удалении доступа к форме: {str(e)}'}
+
+    def find_user_by_nick_fuzzy(self, nick):
+    """
+    Умный поиск пользователя по нику с нормализацией.
+    """
+    try:
+        clean_nick = normalize_nick(nick)
+        print(f"🔍 Ищем: {clean_nick}")
+        
+        # Пробуем найти точное совпадение
+        cell = self.sheet.find(clean_nick)
+        if cell:
+            print(f"✅ Найдено точное совпадение в строке {cell.row}")
+            return self.get_user_data(cell.row)
+        
+        # Если точного нет — ищем частичное совпадение
+        all_values = self.sheet.get_all_values()
+        for row_num, row in enumerate(all_values, start=1):
+            if row_num == 1:  # Пропускаем заголовки
+                continue
+            if not row or not row[0]:
+                continue
+            
+            # Проверяем, содержит ли ник искомый
+            table_nick = row[0].strip().lower()
+            search_nick = clean_nick.lower()
+            
+            # Проверяем вхождения
+            if search_nick in table_nick or table_nick in search_nick:
+                print(f"✅ Найдено частичное совпадение: '{row[0]}' в строке {row_num}")
+                return self.get_user_data(row_num)
+        
+        print(f"❌ Пользователь {nick} не найден")
+        return None
+    except Exception as e:
+        print(f"❌ Ошибка поиска: {e}")
+        return None
     
     def full_remove_user(self, email: str) -> dict:
         try:
