@@ -506,12 +506,20 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
         if staff_role:
             await user.add_roles(staff_role)
         
-        # ===== 1. УВЕДОМЛЕНИЕ В КАНАЛ УЧЁТА =====
+        # ===== 1. УВЕДОМЛЕНИЕ В КАНАЛ УЧЁТА (разное для Стажер и остальных) =====
         channel = bot.get_channel(CHANNELS['учет_принятых_повышенных'])
         if channel:
+            # Определяем заголовок в зависимости от должности
+            if position == 'Стажер':
+                title = "📥 Принят новый сотрудник"
+                color = discord.Color.green()
+            else:
+                title = "📈 Сотрудник повышен"
+                color = discord.Color.gold()
+            
             embed = discord.Embed(
-                title="📥 Принят новый сотрудник",
-                color=discord.Color.green(),
+                title=title,
+                color=color,
                 timestamp=datetime.datetime.now()
             )
             embed.add_field(name="1. Пинг сотрудника", value=user.mention, inline=False)
@@ -520,23 +528,20 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
             embed.add_field(name="4. Кто провел обзвон", value=interaction.user.mention, inline=False)
             await channel.send(embed=embed)
         
-        # ===== 2. ЛИЧНОЕ СООБЩЕНИЕ =====
+        # ===== 2. ПРИВЕТСТВИЕ В ОБЫЧНЫЙ ЧАТ (ID: 1297555288790011977) =====
         try:
-            dm_message = (
-                f"**👋 Добро пожаловать в команду, {user.mention}!**\n\n"
-                f"Ты был принят на должность **{position}**.\n\n"
-                f"📌 **Для выдачи доступа к таблицам, скинь свою почту** <@&1327267237777768532> или <@&1311678066845679616>.\n\n"
-                f"**Твои данные:**\n"
-                f"1. Ник: `{user.display_name}`\n"
-                f"2. Почта: _ожидается_\n\n"
-                f"Удачи в работе! 🚀"
-            )
-            await user.send(dm_message)
-            print(f"✅ Личное сообщение отправлено {user.display_name}")
-        except discord.errors.Forbidden:
-            print(f"⚠️ Не удалось отправить личное сообщение {user.display_name} (закрыты ЛС)")
+            welcome_channel = bot.get_channel(1297555288790011977)
+            if welcome_channel:
+                welcome_message = (
+                    f"{user.mention}, добро пожаловать! 🎉\n"
+                    f"Скинь свою почту <@&1327267237777768532> или <@&1311678066845679616>."
+                )
+                await welcome_channel.send(welcome_message)
+                print(f"✅ Приветствие отправлено в канал {welcome_channel.name}")
+            else:
+                print(f"⚠️ Канал с ID 1297555288790011977 не найден!")
         except Exception as e:
-            print(f"❌ Ошибка при отправке ЛС: {e}")
+            print(f"❌ Ошибка при отправке приветствия: {e}")
         
         # Обновляем состав
         await update_staff_message()
