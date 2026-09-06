@@ -108,11 +108,25 @@ async def on_ready():
 async def stat(interaction: discord.Interaction, user: discord.Member):
     try:
         await interaction.response.defer(thinking=True)
+        
+        # Пробуем найти по нику
         clean_nick = normalize_nick(user.display_name)
-        user_data = sheets.find_user_by_nick(clean_nick)
+        user_data = sheets.find_user_by_nick_fuzzy(clean_nick)
+        
         if not user_data:
-            await interaction.followup.send(f"❌ Пользователь {user.mention} не найден в таблице.")
+            # Если не нашли — пробуем найти по display_name (с приписками)
+            print(f"⚠️ Поиск по {clean_nick} не дал результатов, пробуем по {user.display_name}")
+            user_data = sheets.find_user_by_nick(user.display_name)
+        
+        if not user_data:
+            await interaction.followup.send(
+                f"❌ Пользователь {user.mention} не найден в таблице.\n"
+                f"Проверь, что ник в таблице соответствует твоему Discord-нику.\n"
+                f"Твой ник: `{user.display_name}`\n"
+                f"Очищенный ник: `{clean_nick}`"
+            )
             return
+        
         embed = discord.Embed(
             title=f"📊 Статистика {user.display_name}",
             color=discord.Color.blue()
@@ -122,12 +136,14 @@ async def stat(interaction: discord.Interaction, user: discord.Member):
         embed.add_field(name="☠ Варны", value=user_data['warns'], inline=True)
         embed.add_field(name="☠ Устники", value=user_data['warnings'], inline=True)
         embed.add_field(name="✉ Почта", value=user_data['email'] or 'Не указана', inline=True)
-        embed.set_footer(text=f"ID: {user.id}")
+        embed.set_footer(text=f"ID: {user.id} | Найден как: {user_data['nick']}")
         await interaction.followup.send(embed=embed)
+        
     except discord.errors.NotFound:
         print("⚠️ Взаимодействие для stat истекло")
     except Exception as e:
         print(f"❌ Ошибка в stat: {e}")
+        await interaction.followup.send(f"❌ Ошибка: {e}")
 
 # 2. /варн
 @bot.tree.command(name="варн", description="Выдать предупреждение игроку")
