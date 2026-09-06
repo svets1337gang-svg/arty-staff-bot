@@ -10,8 +10,9 @@ from typing import Optional
 
 from config import (
     DISCORD_TOKEN, CHANNELS, ROLES, ROLES_TO_REMOVE,
-    STAT_ROLES, STAFF_ROLES, POSITION_TO_ROLE, ALL_POSITIONS,
+    STAT_ROLES, STAFF_ROLES, ACCEPT_ROLES, POSITION_TO_ROLE, ALL_POSITIONS,
     POSITION_ORDER
+)
 )
 from sheets import SheetsManager
 
@@ -443,42 +444,124 @@ async def promote(interaction: discord.Interaction, user: discord.Member, new_po
     except Exception as e:
         print(f"❌ Ошибка в повысить: {e}")
 
-# 8. /добавитьсостав
-@bot.tree.command(name="добавитьсостав", description="Добавить сотрудника в состав вручную")
-@app_commands.describe(user="Игрок", position="Должность")
-@has_staff_role_check()
-async def add_staff(interaction: discord.Interaction, user: discord.Member, position: str):
+# 8. /принять
+@bot.tree.command(name="принять", description="Принять нового сотрудника в состав")
+@app_commands.describe(
+    user="Игрок",
+    position="Должность (Стажер или Мл. Поддержка для обзванивающих, остальные - только для зам. куратора+)"
+)
+async def accept_staff(interaction: discord.Interaction, user: discord.Member, position: str):
     try:
         await interaction.response.defer(thinking=True)
+        
+        # Проверяем, существует ли должность
         if position not in ALL_POSITIONS:
             positions_list = "\n".join(ALL_POSITIONS)
             await interaction.followup.send(f"❌ Должность '{position}' не найдена.\nДоступные должности:\n{positions_list}")
             return
         
+        # Получаем роли пользователя
+        user_roles = [role.id for role in interaction.user.roles]
+        
+        # Проверяем, есть ли у пользователя доступ к команде (Обзванивающий или Зам. Куратора+)
+        has_accept_permission = any(role in ACCEPT_ROLES for role in user_roles)
+        if not has_accept_permission:
+            await interaction.followup.send(
+                "❌ У вас нет доступа к этой команде.\n"
+                "Требуется роль: **Обзванивающий** или **Зам. Куратора+**."
+            )
+            return
+        
+        # Проверяем, есть ли у пользователя полный доступ (Зам. Куратора+)
+        has_full_access = any(role in STAFF_ROLES for role in user_roles)
+        
+        # Ограничения для обзванивающих
+        allowed_positions = ['Стажер', 'Мл. Поддержка']
+        if not has_full_access and position not in allowed_positions:
+            await interaction.followup.send(
+                f"❌ У вас нет прав для приёма на должность '{position}'.\n"
+                f"Ваша роль **Обзванивающий** может принимать только на: {', '.join(allowed_positions)}\n"
+                f"Для приёма на другие должности нужна роль **Зам. Куратора** или выше."
+            )
+            return
+        
+        # Проверяем, есть ли уже в составе
         clean_nick = normalize_nick(user.display_name)
         existing = next((m for m in staff_list if m['nick'] == clean_nick), None)
         if existing:
             await interaction.followup.send(f"❌ {user.mention} уже есть в составе.")
             return
         
+        # Добавляем в состав
         staff_list.append({'nick': clean_nick, 'position': position})
         save_staff()
         
+        # Выдаём роли
         role_id = POSITION_TO_ROLE.get(position)
         if role_id:
             role = interaction.guild.get_role(role_id)
             if role:
                 await user.add_roles(role)
+        
         staff_role = interaction.guild.get_role(ROLES['STAFF_FT'])
         if staff_role:
             await user.add_roles(staff_role)
         
+        # Отправляем уведомление в канал учёта
+        channel = bot.get_channel(CHANNELS['учет_принятых_повышенных'])
+        embed = discord.Embed(
+            title="📥 Принят новый сотрудник",
+            color=discord.Color.green(),
+            timestamp=datetime.datetime.now()
+        )
+        embed.add_field(name="1. Пинг сотрудника", value=user.mention, inline=False)
+        embed.add_field(name="2. Ник", value=user.display_name, inline=False)
+        embed.add_field(name="3. Принят на должность", value=f"[{position}]", inline=False)
+        embed.add_field(name="4. Кто принял", value=interaction.user.mention, inline=False)
+        if channel:
+            await channel.send(embed=embed)
+        
+        # Отправляем личное сообщение новому сотруднику
+        try:
+            welcome_message = (
+                f"**👋 Добро пожаловать в команду, {user.mention}!**\n\n"
+                f"Ты был принят на должность **{position}**.\n\n"
+                f"📌 **Для выдачи доступа к таблицам, скинь свою почту** <@&1327267237777768532> или <@&1311678066845679616>.\n\n"
+                f"**Твои данные:**\n"
+                f"1. Ник: `{user.display_name}`\n"
+                f"2. Почта: _ожидается_\n\n"
+                f"Удачи в работе! 🚀"
+            )
+            await user.send(welcome_message)
+            print(f"✅ Личное сообщение отправлено {user.display_name}")
+        except discord.errors.Forbidden:
+            print(f"⚠️ Не удалось отправить личное сообщение {user.display_name} (закрыты ЛС)")
+        except Exception as e:
+            print(f"❌ Ошибка при отправке ЛС: {e}")
+        
+        # Пингуем игрока в чате
+        try:
+            ping_channel = bot.get_channel(CHANNELS['учет_принятых_повышенных'])
+            if ping_channel:
+                await ping_channel.send(
+                    f"{user.mention}, добро пожаловать! 🎉\n"
+                    f"Для выдачи доступа к таблицам, скинь свою почту <@&1327267237777768532> или <@&1311678066845679616>.\n"
+                    f"**Твои данные:**\n"
+                    f"1. Ник: `{user.display_name}`\n"
+                    f"2. Почта: _ожидается_"
+                )
+        except Exception as e:
+            print(f"❌ Ошибка при пинге: {e}")
+        
+        # Обновляем состав
         await update_staff_message()
-        await interaction.followup.send(f"✅ {user.mention} добавлен в состав как {position}")
+        await interaction.followup.send(f"✅ {user.mention} принят на должность {position}")
+        
     except discord.errors.NotFound:
-        print("⚠️ Взаимодействие для добавитьсостав истекло")
+        print("⚠️ Взаимодействие для принять истекло")
     except Exception as e:
-        print(f"❌ Ошибка в добавитьсостав: {e}")
+        print(f"❌ Ошибка в принять: {e}")
+        await interaction.followup.send(f"❌ Ошибка: {e}")
 
 # 9. /удалитьсостав
 @bot.tree.command(name="удалитьсостав", description="Удалить сотрудника из состава вручную")
