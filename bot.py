@@ -101,7 +101,7 @@ async def on_ready():
     print(f'✅ Бот {bot.user} запущен!')
     print(f'📋 Загружено {len(staff_list)} сотрудников в составе')
     await bot.tree.sync()
-    print('✅ Команды синхронизированы')
+    print('✅ Команды синхронизированы глобально')
 
 # 1. /stat
 @bot.tree.command(name="stat", description="Статистика игрока")
@@ -804,6 +804,17 @@ async def grant_access(interaction: discord.Interaction, email: str):
             await interaction.followup.send(f"❌ Ошибка: {e}")
         except discord.errors.NotFound:
             pass
+
+# 15. /sync
+@bot.tree.command(name="sync", description="Принудительно синхронизировать команды (только для админов)")
+@has_staff_role_check()
+async def sync_commands(interaction: discord.Interaction):
+    try:
+        await interaction.response.defer(thinking=True)
+        await bot.tree.sync()
+        await interaction.followup.send("✅ Команды синхронизированы!")
+    except Exception as e:
+        await interaction.followup.send(f"❌ Ошибка синхронизации: {e}")
 
 # ============ АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ СОСТАВА ============
 
