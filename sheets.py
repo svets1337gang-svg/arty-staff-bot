@@ -212,35 +212,27 @@ class SheetsManager:
 
 def update_user(self, row, column, value):
     try:
-        print(f"🟢🟢🟢 update_user вызван!")
-        print(f"   - row: {row}")
-        print(f"   - column: {column}")
-        print(f"   - value: {value}")
-        
-        # Проверяем, что row и column - числа
-        if not isinstance(row, int):
-            print(f"❌ row не число! Это {type(row)}")
-            return
-        
-        if not isinstance(column, int):
-            print(f"❌ column не число! Это {type(column)}")
-            return
-        
-        # Показываем текущее значение ДО обновления
-        old_value = self.sheet.cell(row, column).value
-        print(f"   - старое значение: {old_value}")
-        
-        # Обновляем
         self.sheet.update_cell(row, column, value)
-        
-        # Проверяем, что обновилось
-        new_value = self.sheet.cell(row, column).value
-        print(f"   - новое значение: {new_value}")
-        print(f"🟢🟢🟢 update_user завершён")
-        
+
+        # Проверяем, что Google Таблицы реально сохранили значение
+        saved_value = self.sheet.cell(row, column).value
+
+        if str(saved_value).strip() != str(value).strip():
+            print(
+                f"❌ Ошибка записи в таблицу: "
+                f"ожидалось '{value}', получено '{saved_value}'"
+            )
+            return False
+
+        print(
+            f"✅ Таблица обновлена: "
+            f"строка {row}, колонка {column} → '{value}'"
+        )
+        return True
+
     except Exception as e:
-        print(f"❌❌❌ update_user ОШИБКА: {e}")
-        raise
+        print(f"❌ Ошибка update_user: {e}")
+        return False
 
 
     def add_user(
