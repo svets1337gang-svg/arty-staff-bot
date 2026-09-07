@@ -100,8 +100,23 @@ def has_stat_role_check():
 async def on_ready():
     print(f'✅ Бот {bot.user} запущен!')
     print(f'📋 Загружено {len(staff_list)} сотрудников в составе')
-    await bot.tree.sync()
-    print('✅ Команды синхронизированы глобально')
+
+    try:
+        # ID Discord-сервера
+        guild_id = 1247251922579099719
+        guild = discord.Object(id=guild_id)
+
+        # Копируем глобальные команды на сервер
+        bot.tree.copy_global_to(guild=guild)
+
+        # Синхронизируем команды
+        synced = await bot.tree.sync(guild=guild)
+
+        print(f'✅ Синхронизировано команд: {len(synced)}')
+        print('📋 Команды синхронизированы на сервере')
+
+    except Exception as e:
+        print(f'❌ Ошибка синхронизации команд: {e}')
 
 # 1. /stat
 @bot.tree.command(name="stat", description="Статистика игрока")
