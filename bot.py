@@ -457,16 +457,13 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
     try:
         await interaction.response.defer(thinking=True)
         
-        # Проверяем, существует ли должность
         if position not in ALL_POSITIONS:
             positions_list = "\n".join(ALL_POSITIONS)
             await interaction.followup.send(f"❌ Должность '{position}' не найдена.\nДоступные должности:\n{positions_list}")
             return
         
-        # Получаем роли пользователя
         user_roles = [role.id for role in interaction.user.roles]
         
-        # Проверяем, есть ли у пользователя доступ к команде (Обзванивающий или Зам. Куратора+)
         has_accept_permission = any(role in ACCEPT_ROLES for role in user_roles)
         if not has_accept_permission:
             await interaction.followup.send(
@@ -475,10 +472,8 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
             )
             return
         
-        # Проверяем, есть ли у пользователя полный доступ (Зам. Куратора+)
         has_full_access = any(role in STAFF_ROLES for role in user_roles)
         
-        # Ограничения для обзванивающих
         allowed_positions = ['Стажер', 'Мл. Поддержка']
         if not has_full_access and position not in allowed_positions:
             await interaction.followup.send(
@@ -488,14 +483,12 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
             )
             return
         
-        # Проверяем, есть ли уже в составе
         clean_nick = normalize_nick(user.display_name)
         existing = next((m for m in staff_list if m['nick'] == clean_nick), None)
         if existing:
             await interaction.followup.send(f"❌ {user.mention} уже есть в составе.")
             return
         
-        # Добавляем в состав
         staff_list.append({'nick': clean_nick, 'position': position})
         save_staff()
         
@@ -515,7 +508,7 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
             await user.add_roles(staff_role)
             print(f"✅ Выдана роль: {staff_role.name}")
         
-        # 3. 🆕 СНИМАЕМ роль "Обзвон FT" (если есть)
+        # 3. СНИМАЕМ роль "Обзвон FT" (если есть)
         obzvon_role = interaction.guild.get_role(1366434300970532955)
         if obzvon_role and obzvon_role in user.roles:
             await user.remove_roles(obzvon_role)
@@ -552,7 +545,7 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
             if welcome_channel:
                 welcome_message = (
                     f"{user.mention}, добро пожаловать! 🎉\n"
-                    f"Скинь свою почту Зам. Куратору или Куратору"
+                    f"Скинь свою почту <@&1327267237777768532> или <@&1311678066845679616>."
                 )
                 await welcome_channel.send(welcome_message)
                 print(f"✅ Приветствие отправлено в канал {welcome_channel.name}")
@@ -561,7 +554,6 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
         except Exception as e:
             print(f"❌ Ошибка при отправке приветствия: {e}")
         
-        # Обновляем состав
         await update_staff_message()
         await interaction.followup.send(f"✅ {user.mention} принят на должность {position}")
         
@@ -570,6 +562,7 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
     except Exception as e:
         print(f"❌ Ошибка в принять: {e}")
         await interaction.followup.send(f"❌ Ошибка: {e}")
+
 # 9. /удалитьсостав
 @bot.tree.command(name="удалитьсостав", description="Удалить сотрудника из состава вручную (роли НЕ снимаются)")
 @app_commands.describe(nick="Ник сотрудника (без @)")
@@ -629,7 +622,8 @@ async def help_command(interaction: discord.Interaction):
         embed.add_field(
             name="⚠️ Важно!",
             value=(
-                "**Все команды, кроме `/stat`, писать ТОЛЬКО в этом канале!**\n"
+                "**Все команды, кроме `/stat`, работают ТОЛЬКО в этом канале!**\n"
+                "Используй их здесь, чтобы избежать ошибок."
             ),
             inline=False
         )
@@ -657,8 +651,8 @@ async def help_command(interaction: discord.Interaction):
                 "`/принять @ник должность` — Принять нового сотрудника\n"
                 "`/снять @ник причина` — Снять сотрудника\n"
                 "`/повысить ник должность` — Повысить сотрудника\n"
-                "`/добавитьсостав ник должность` — Добавить в состав\n"
-                "`/удалитьсостав ник` — Удалить из состава\n"
+                "`/добавитьсостав ник должность` — Добавить в состав (без уведомлений)\n"
+                "`/удалитьсостав ник` — Удалить из состава (роли НЕ снимаются)\n"
                 "`/обновитьсостав` — Обновить сообщение с составом"
             ),
             inline=False
@@ -761,16 +755,14 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         
         row = user_data['row']
         
-        # Находим колонку с датой (с учетом блока сотрудника)
         date_col = sheets.find_column_by_date_for_user(row, date)
         
         if not date_col:
             await interaction.followup.send(f"❌ Дата {date} не найдена в таблице.")
             return
         
-        # Копируем значение и стиль из B80
         source_row = 80
-        source_col = 2  # B
+        source_col = 2
         
         target_row = row
         target_col = date_col
@@ -784,7 +776,6 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             await interaction.followup.send("❌ Ошибка при копировании отгула.")
             return
         
-        # Снимаем баллы (40)
         points_col = 3
         current_points = int(user_data['points']) if user_data['points'].isdigit() else 0
         new_points = current_points - 40
@@ -793,13 +784,6 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             new_points = 0
         
         sheets.update_user(row, points_col, str(new_points))
-        
-        # =========================================================
-        # ❌ УБРАНО УВЕДОМЛЕНИЕ В КАНАЛ НАКАЗАНИЙ
-        # =========================================================
-        # channel = bot.get_channel(CHANNELS['наказания'])
-        # embed = discord.Embed(...)
-        # await channel.send(embed=embed)
         
         await interaction.followup.send(
             f"✅ Отгул оформлен {user.mention} на {date}\n"
