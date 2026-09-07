@@ -553,21 +553,6 @@ async def remove_staff_manual(interaction: discord.Interaction, nick: str):
         print(f"❌ Ошибка в удалитьсостав: {e}")
         await interaction.followup.send(f"❌ Ошибка: {e}")
 
-# 10. /обновитьсостав
-@bot.tree.command(name="обновитьсостав", description="Принудительно обновить сообщение с составом")
-@has_staff_role_check()
-async def refresh_staff(interaction: discord.Interaction):
-    try:
-        await interaction.response.defer(thinking=True)
-        global staff_message_id
-        staff_message_id = None
-        await update_staff_message()
-        await interaction.followup.send("✅ Состав успешно обновлён!")
-    except discord.errors.NotFound:
-        print("⚠️ Взаимодействие для обновитьсостав истекло")
-    except Exception as e:
-        print(f"❌ Ошибка в обновитьсостав: {e}")
-
 # 11. /help
 @bot.tree.command(name="help", description="Показать список команд и информацию о боте")
 async def help_command(interaction: discord.Interaction):
@@ -952,39 +937,6 @@ async def sync_commands(interaction: discord.Interaction):
         await interaction.followup.send(f"✅ Команды синхронизированы!")
     except Exception as e:
         await interaction.followup.send(f"❌ Ошибка синхронизации: {e}")
-
-# 16. /очистить
-@bot.tree.command(name="очистить", description="Очистить указанное количество сообщений в канале")
-@app_commands.describe(count="Количество сообщений для удаления (от 1 до 100)")
-@has_staff_role_check()
-async def clear_messages(interaction: discord.Interaction, count: int):
-    try:
-        await interaction.response.defer(thinking=True)
-        
-        # Проверяем, что количество в допустимых пределах
-        if count < 1:
-            await interaction.followup.send("❌ Количество должно быть больше 0.")
-            return
-        
-        if count > 100:
-            await interaction.followup.send("❌ Можно удалить не более 100 сообщений за раз.")
-            return
-        
-        # Удаляем сообщения
-        deleted = await interaction.channel.purge(limit=count)
-        
-        await interaction.followup.send(
-            f"✅ Удалено **{len(deleted)}** сообщений.",
-            ephemeral=True
-        )
-        
-    except discord.errors.Forbidden:
-        await interaction.followup.send("❌ У бота нет прав на удаление сообщений в этом канале.")
-    except discord.errors.NotFound:
-        print("⚠️ Взаимодействие для очистить истекло")
-    except Exception as e:
-        print(f"❌ Ошибка в очистить: {e}")
-        await interaction.followup.send(f"❌ Ошибка: {e}")
 
 # ============ АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ СОСТАВА ============
 
