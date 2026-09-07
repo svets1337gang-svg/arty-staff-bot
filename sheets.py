@@ -1,6 +1,6 @@
 import gspread
 from google.oauth2.service_account import Credentials
-from config import GOOGLE_SHEETS_ID, SHEET_NAME
+from config import GOOGLE_SHEETS_ID, SHEET_NAME, CREDENTIALS_FILE, GOOGLE_SCOPES
 import re
 from googleapiclient.discovery import build
 import os
@@ -57,7 +57,7 @@ class SheetsManager:
 
     def __init__(self):
         self.gc = gspread.service_account(
-            filename='credentials.json'
+            filename=CREDENTIALS_FILE
         )
 
         self.sheet = self.gc.open_by_key(
@@ -465,7 +465,10 @@ class SheetsManager:
             }
 
         try:
-            creds = Credentials.from_service_account_file('credentials.json')
+            creds = Credentials.from_service_account_file(
+                CREDENTIALS_FILE,
+                scopes=GOOGLE_SCOPES
+            )
             drive_service = build('drive', 'v3', credentials=creds)
 
             permissions = self._list_all_permissions(
@@ -596,7 +599,10 @@ class SheetsManager:
             nick = user_data['nick']
             row = user_data['row']
 
-            creds = Credentials.from_service_account_file('credentials.json')
+            creds = Credentials.from_service_account_file(
+                CREDENTIALS_FILE,
+                scopes=GOOGLE_SCOPES
+            )
             drive_service = build('drive', 'v3', credentials=creds)
 
             # УДАЛЕНИЕ ДОСТУПА К ТАБЛИЦЕ
