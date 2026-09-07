@@ -809,26 +809,19 @@ async def grant_access(interaction: discord.Interaction, email: str):
 
 async def update_staff_message():
     global staff_message_id, staff_list
-
     channel = bot.get_channel(staff_channel_id)
     if not channel:
-        print("⚠️ Канал состава не найден")
         return
-
-    # Сортировка изменяет staff_list, поэтому сразу сохраняем новое состояние.
     staff_list.sort(key=lambda x: POSITION_ORDER.get(x['position'], 99))
-    save_staff()
-
     if not staff_list:
-        content = "📋 СОСТАВ FT\\n\\nСотрудников пока нет"
+        content = "📋 СОСТАВ FT\n\nСотрудников пока нет"
     else:
         staff_text = ""
         for member in staff_list:
-            staff_text += f"• {member['nick']} — {member['position']}\\n"
-
+            staff_text += f"• {member['nick']} — {member['position']}\n"
         content = f"""📋 СОСТАВ FT
 
-```\\n{staff_text}```
+```\n{staff_text}```
 
 Общий состав: {len(staff_list)} человек
 
@@ -838,24 +831,22 @@ async def update_staff_message():
 https://docs.google.com/spreadsheets/d/1-3ER99-RpUkPdeRE4JC5s0KRnV1unqNnmNQhtf4J7a4/edit?pli=1&gid=624912206#gid=624912206
 
 <@&1328055611853635636>"""
-
     try:
         if staff_message_id:
             msg = await channel.fetch_message(staff_message_id)
             await msg.edit(content=content)
-            return
-
-        async for msg in channel.history(limit=100):
-            if msg.author == bot.user and msg.content.startswith('📋 СОСТАВ FT'):
-                staff_message_id = msg.id
-                await msg.edit(content=content)
-                return
-
-        msg = await channel.send(content)
-        staff_message_id = msg.id
+        else:
+            async for msg in channel.history(limit=100):
+                if msg.author == bot.user and msg.content.startswith('📋 СОСТАВ FT'):
+                    staff_message_id = msg.id
+                    await msg.edit(content=content)
+                    return
+            msg = await channel.send(content)
+            staff_message_id = msg.id
+        save_staff()
     except Exception as e:
         print(f"Ошибка обновления состава: {e}")
-
+        
 # ===== ОБРАБОТКА СООБЩЕНИЙ В КАНАЛЕ УЧЁТА =====
 
 def parse_line(line):
