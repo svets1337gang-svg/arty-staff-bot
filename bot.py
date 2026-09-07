@@ -689,60 +689,235 @@ async def add_staff_manual(interaction: discord.Interaction, nick: str, position
 async def take_off(interaction: discord.Interaction, user: discord.Member, date: str):
     try:
         await interaction.response.defer(thinking=True)
-        
+
+        # ==========================================
+        # 1. Ищем сотрудника
+        # ==========================================
+
         clean_nick = normalize_nick(user.display_name)
         user_data = sheets.find_user_by_nick(clean_nick)
-        
+
         if not user_data:
-            await interaction.followup.send(f"❌ Пользователь {user.mention} не найден в таблице.")
+            await interaction.followup.send(
+                f"❌ Пользователь {user.mention} не найден в таблице."
+            )
             return
-        
+
         row = user_data['row']
-        
-        # Находим колонку с датой (с учетом блока сотрудника)
-        date_col = sheets.find_column_by_date_for_user(row, date)
-        
+
+        # ==========================================
+        # 2. Проверяем дату
+        # ==========================================
+
+        date = date.strip()
+
+        date_col = sheets.find_column_by_date_for_user(
+            row,
+            date
+        )
+
         if not date_col:
-            await interaction.followup.send(f"❌ Дата {date} не найдена в таблице.")
+            await interaction.followup.send(
+                f"❌ Дата `{date}` не найдена в таблице."
+            )
             return
-        
-        # Копируем значение и стиль из B80
+
+        # ==========================================
+        # 3. Получаем текущие баллы
+        # ==========================================
+
+        points_raw = user_data.get('points', '0')
+
+        # Используем parse_points из sheets.py
+        current_points = sheets.parse_points(points_raw)
+
+        print(
+            f"📊 Отгул: {clean_nick} | "
+            f"строка: {row} | "
+            f"баллы в таблице: '{points_raw}' | "
+            f"распознано: {current_points}"
+        )
+
+        # ==========================================
+        # 4. Проверяем наличие 100 баллов
+        # ==========================================
+
+        COST = 100
+
+        if current_points < COST:
+            await interaction.followup.send(
+                f"❌ Недостаточно баллов для отгула.\n"
+                f"Требуется: **{COST}**\n"
+                f"В наличии: **{current_points}**"
+            )
+            return
+
+        # ==========================================
+        # 5. Проверяем, что ячейка ещё свободна
+        # ==========================================
+
+        old_cell_value = sheets.get_cell_value(
+            row,
+            date_col
+        )
+
+        print(
+            f"📅 Ячейка отгула: "
+            f"строка {row}, колонка {date_col}, "
+            f"текущее значение: '{old_cell_value}'"
+        )
+
+        if old_cell_value and str(old_cell_value).strip():
+            await interaction.followup.send(
+                f"❌ На дату `{date}` у сотрудника "
+                f"уже что-то указано: `{old_cell_value}`"
+            )
+            return
+
+        # ==========================================
+        # 6. Копируем ОТГУЛ из B80
+        # ==========================================
+
         source_row = 80
-        source_col = 2  # B
-        
-        target_row = row
-        target_col = date_col
-        
-        copy_success = sheets.copy_cell_style_with_value(
-            source_row, source_col,
-            target_row, target_col
+        source_col = 2  # B80
+
+        source_value = sheets.get_cell_value(
+            source_row,
+            source_col
         )
-        
-        if not copy_success:
-            await interaction.followup.send("❌ Ошибка при копировании отгула.")
+
+        print(
+            f"📋 Источник отгула B80: '{source_value}'"
+        )
+
+        if not source_value or "отгул" not in str(source_value).casefold():
+            await interaction.followup.send(
+                "❌ В ячейке `B80` не найдено значение "
+                "**ОТГУЛ**.\n"
+                f"Сейчас в B80 находится: `{source_value}`"
+            )
             return
-        
-        # ===== СНИМАЕМ БАЛЛЫ (100) =====
-        points_col = 3
-        current_points = int(user_data['points']) if user_data['points'].isdigit() else 0
-        new_points = current_points - 100  # ← СТОИМОСТЬ ОТГУЛА 100 БАЛЛОВ
-        
-        if new_points < 0:
-            new_points = 0
-        
-        sheets.update_user(row, points_col, str(new_points))
-        
-        # Отправляем ответ
-        await interaction.followup.send(
-            f"✅ Отгул оформлен {user.mention} на {date}\n"
-            f"Списано 100 баллов. Остаток: {new_points}"
+
+        copy_success = sheets.copy_cell_style_with_value(
+            source_row,
+            source_col,
+            row,
+            date_col
         )
-        
+
+        if not copy_success:
+            await interaction.followup.send(
+                "❌ Не удалось установить отгул в таблице."
+            )
+            return
+
+        # ==========================================
+        # 7. Проверяем, что ОТГУЛ реально записался
+        # ==========================================
+
+        await asyncio.sleep(0.5)
+
+        new_cell_value = sheets.get_cell_value(
+            row,
+            date_col
+        )
+
+        print(
+            f"📅 После копирования: "
+            f"строка {row}, колонка {date_col}, "
+            f"значение: '{new_cell_value}'"
+        )
+
+        if not new_cell_value or "отгул" not in str(new_cell_value).casefold():
+            await interaction.followup.send(
+                "❌ Отгул не записался в таблицу.\n"
+                f"Проверка ячейки: `{new_cell_value}`"
+            )
+            return
+
+        # ==========================================
+        # 8. Списываем 100 баллов
+        # ==========================================
+
+        new_points = current_points - COST
+
+        sheets.update_user(
+            row,
+            3,  # колонка C
+            str(new_points)
+        )
+
+        # ==========================================
+        # 9. Проверяем запись баллов
+        # ==========================================
+
+        await asyncio.sleep(0.5)
+
+        updated_user_data = sheets.get_user_data(row)
+        saved_points_raw = updated_user_data.get(
+            'points',
+            '0'
+        )
+
+        saved_points = sheets.parse_points(
+            saved_points_raw
+        )
+
+        print(
+            f"📊 После списания: "
+            f"было {current_points}, "
+            f"должно стать {new_points}, "
+            f"в таблице сейчас '{saved_points_raw}' "
+            f"→ {saved_points}"
+        )
+
+        if saved_points != new_points:
+            # Пытаемся ещё раз записать правильное значение
+            sheets.update_user(
+                row,
+                3,
+                str(new_points)
+            )
+
+            await asyncio.sleep(0.5)
+
+            updated_user_data = sheets.get_user_data(row)
+            saved_points = sheets.parse_points(
+                updated_user_data.get('points', '0')
+            )
+
+            if saved_points != new_points:
+                await interaction.followup.send(
+                    "❌ Отгул установлен, но баллы "
+                    "не удалось корректно обновить в таблице.\n"
+                    f"Ожидалось: `{new_points}`\n"
+                    f"В таблице: `{saved_points}`"
+                )
+                return
+
+        # ==========================================
+        # 10. Успешный результат
+        # ==========================================
+
+        await interaction.followup.send(
+            f"✅ Отгул оформлен {user.mention} на `{date}`.\n"
+            f"📅 Отгул установлен в таблице.\n"
+            f"💰 Списано: **{COST} баллов**.\n"
+            f"💰 Остаток: **{new_points}**"
+        )
+
     except discord.errors.NotFound:
         print("⚠️ Взаимодействие для отгул истекло")
+
     except Exception as e:
         print(f"❌ Ошибка в отгул: {e}")
-        await interaction.followup.send(f"❌ Ошибка: {e}")
+
+        try:
+            await interaction.followup.send(
+                f"❌ Ошибка при оформлении отгула: `{e}`"
+            )
+        except:
+            pass
 
 # 14. /выдатьдоступ
 @bot.tree.command(
