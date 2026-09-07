@@ -711,6 +711,86 @@ async def add_staff_manual(interaction: discord.Interaction, nick: str, position
         print(f"❌ Ошибка в добавитьсостав: {e}")
         await interaction.followup.send(f"❌ Ошибка: {e}")
 
+# 13. /отгул
+@bot.tree.command(name="отгул", description="Оформить отгул сотруднику")
+@app_commands.describe(
+    user="Игрок",
+    date="Дата отгула (например: 08.09)"
+)
+@has_staff_role_check()
+async def take_off(interaction: discord.Interaction, user: discord.Member, date: str):
+    try:
+        await interaction.response.defer(thinking=True)
+        
+        clean_nick = normalize_nick(user.display_name)
+        user_data = sheets.find_user_by_nick(clean_nick)
+        
+        if not user_data:
+            await interaction.followup.send(f"❌ Пользователь {user.mention} не найден в таблице.")
+            return
+        
+        row = user_data['row']  # Строка сотрудника
+        
+        # ===== 1. Находим колонку с датой =====
+        date_col = sheets.find_column_by_date(date)
+        
+        if not date_col:
+            await interaction.followup.send(f"❌ Дата {date} не найдена в таблице.")
+            return
+        
+        # ===== 2. Копируем значение и стиль из B80 =====
+        source_row = 80
+        source_col = 2  # B
+        
+        target_row = row
+        target_col = date_col
+        
+        copy_success = sheets.copy_cell_style_with_value(
+            source_row, source_col,
+            target_row, target_col
+        )
+        
+        if not copy_success:
+            await interaction.followup.send("❌ Ошибка при копировании отгула.")
+            return
+        
+        # ===== 3. Снимаем баллы (40) =====
+        points_col = 3  # Колонка C
+        current_points = int(user_data['points']) if user_data['points'].isdigit() else 0
+        new_points = current_points - 40
+        
+        if new_points < 0:
+            new_points = 0
+        
+        sheets.update_user(row, points_col, str(new_points))
+        
+        # ===== 4. Отправляем уведомление =====
+        channel = bot.get_channel(CHANNELS['наказания'])
+        embed = discord.Embed(
+            title="📅 Оформлен отгул",
+            color=discord.Color.orange(),
+            timestamp=datetime.datetime.now()
+        )
+        embed.add_field(name="Игрок", value=user.mention, inline=True)
+        embed.add_field(name="Дата", value=date, inline=True)
+        embed.add_field(name="Списано баллов", value="40", inline=True)
+        embed.add_field(name="Остаток баллов", value=str(new_points), inline=True)
+        embed.add_field(name="Выдал", value=interaction.user.mention, inline=True)
+        embed.set_footer(text=f"ID: {user.id}")
+        if channel:
+            await channel.send(embed=embed)
+        
+        await interaction.followup.send(
+            f"✅ Отгул оформлен {user.mention} на {date}\n"
+            f"Списано 40 баллов. Остаток: {new_points}"
+        )
+        
+    except discord.errors.NotFound:
+        print("⚠️ Взаимодействие для отгул истекло")
+    except Exception as e:
+        print(f"❌ Ошибка в отгул: {e}")
+        await interaction.followup.send(f"❌ Ошибка: {e}")
+
 # ============ АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ СОСТАВА ============
 
 async def update_staff_message():
