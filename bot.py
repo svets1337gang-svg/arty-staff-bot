@@ -273,7 +273,7 @@ async def warning(interaction: discord.Interaction, user: discord.Member, reason
         print(f"❌ Ошибка в устник: {e}")
 
 # 4. /снятьварн
-@bot.tree.command(name="снятьварн", description="Снять одно предупреждение за 100 баллов")
+@bot.tree.command(name="снятьварн", description="Снять одно предупреждение за 500 баллов")
 @app_commands.describe(user="Игрок")
 @has_staff_role_check()
 async def remove_warn(interaction: discord.Interaction, user: discord.Member):
@@ -288,7 +288,7 @@ async def remove_warn(interaction: discord.Interaction, user: discord.Member):
         print(f"❌ Ошибка в снятьварн: {e}")
 
 # 5. /снятьустник
-@bot.tree.command(name="снятьустник", description="Снять одно устное предупреждение за 50 баллов")
+@bot.tree.command(name="снятьустник", description="Снять одно устное предупреждение за 175 баллов")
 @app_commands.describe(user="Игрок")
 @has_staff_role_check()
 async def remove_warning(interaction: discord.Interaction, user: discord.Member):
@@ -593,8 +593,8 @@ async def help_command(interaction: discord.Interaction):
             value=(
                 "`/варн @ник причина [кол-во]` — Выдать варн(ы)\n"
                 "`/устник @ник причина [кол-во]` — Выдать устник(и)\n"
-                "`/снятьварн @ник` — Снять варн за 100 баллов\n"
-                "`/снятьустник @ник` — Снять устник за 50 баллов"
+                "`/снятьварн @ник` — Снять варн за **500** баллов\n"
+                "`/снятьустник @ник` — Снять устник за **175** баллов"
             ),
             inline=False
         )
@@ -614,7 +614,7 @@ async def help_command(interaction: discord.Interaction):
             name="📅 Отгулы и баллы",
             value=(
                 "`/отгул @ник дата` — Оформить отгул\n"
-                "Списание **100 баллов** за отгул"
+                "Списание **100** баллов за отгул"
             ),
             inline=False
         )
@@ -630,8 +630,8 @@ async def help_command(interaction: discord.Interaction):
         embed.add_field(
             name="💎 Система баллов",
             value=(
-                "Снятие устника — **50 баллов**\n"
-                "Снятие варна — **100 баллов**\n"
+                "Снятие устника — **175 баллов**\n"
+                "Снятие варна — **500 баллов**\n"
                 "Отгул — **100 баллов**"
             ),
             inline=False
@@ -677,7 +677,7 @@ async def add_staff_manual(interaction: discord.Interaction, nick: str, position
         await interaction.followup.send(f"❌ Ошибка: {e}")
 
 # 13. /отгул
-@bot.tree.command(name="отгул", description="Оформить отгул сотруднику")
+@bot.tree.command(name="отгул", description="Оформить отгул сотруднику за 100 баллов")
 @app_commands.describe(
     user="Игрок",
     date="Дата отгула (например: 08.09)"
@@ -719,7 +719,6 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         # 3. ПРОВЕРЯЕМ БАЛЛЫ
         # ==========================================
 
-        # Парсим баллы из таблицы
         points_raw = user_data.get('points', '0')
         try:
             current_points = int(points_raw.strip())
@@ -752,7 +751,6 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         # 5. КОПИРУЕМ ОТГУЛ ИЗ B80
         # ==========================================
 
-        # Проверяем, что в B80 есть "ОТГУЛ"
         source_value = sheets.get_cell_value(80, 2)  # B80
 
         if not source_value or "отгул" not in str(source_value).casefold():
@@ -762,7 +760,6 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             )
             return
 
-        # Копируем ячейку со стилем
         copy_success = sheets.copy_cell_style_with_value(80, 2, row, date_col)
 
         if not copy_success:
@@ -775,7 +772,7 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         # 6. ПРОВЕРЯЕМ, ЧТО ОТГУЛ ЗАПИСАЛСЯ
         # ==========================================
 
-        await asyncio.sleep(0.5)  # Даём время на запись
+        await asyncio.sleep(0.5)
 
         new_value = sheets.get_cell_value(row, date_col)
 
@@ -799,7 +796,6 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
 
         await asyncio.sleep(0.5)
 
-        # Перечитываем данные из таблицы
         check_data = sheets.get_user_data(row)
         saved_points_raw = check_data.get('points', '0')
         try:
@@ -807,7 +803,6 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         except:
             saved_points = 0
 
-        # Если баллы не записались — пробуем ещё раз
         if saved_points != new_points:
             sheets.update_user(row, 3, str(new_points))
             await asyncio.sleep(0.5)
@@ -820,7 +815,6 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
                 saved_points = 0
 
             if saved_points != new_points:
-                # Отправляем предупреждение, но не откатываем отгул
                 await interaction.followup.send(
                     f"⚠️ Отгул установлен, но баллы не обновились!\n"
                     f"Ожидалось: `{new_points}`\n"
