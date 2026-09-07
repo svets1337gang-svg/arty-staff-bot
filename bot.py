@@ -370,67 +370,191 @@ async def remove_user(interaction, user: discord.Member, reason: str):
 
 # 7. /повысить
 @bot.tree.command(name="повысить", description="Повысить сотрудника")
-@app_commands.describe(nick="Ник сотрудника (без @)", new_position="Новая должность")
+@app_commands.describe(
+    user="Discord ID, упоминание или ник сотрудника",
+    new_position="Новая должность"
+)
 @has_staff_role_check()
-async def promote(interaction: discord.Interaction, nick: str, new_position: str):
+async def promote(interaction: discord.Interaction, user: str, new_position: str):
     try:
         await interaction.response.defer(thinking=True)
+
+        # Проверяем должность
         if new_position not in ALL_POSITIONS:
             positions_list = "\n".join(ALL_POSITIONS)
-            await interaction.followup.send(f"❌ Должность '{new_position}' не найдена.\nДоступные должности:\n{positions_list}")
+            await interaction.followup.send(
+                f"❌ Должность `{new_position}` не найдена.\n"
+                f"Доступные должности:\n{positions_list}"
+            )
             return
-        clean_nick = normalize_nick(nick)
-        existing = next((m for m in staff_list if m['nick'] == clean_nick), None)
+
+        # ==========================================
+        # 1. Ищем пользователя по Discord ID / упоминанию / нику
+        # ==========================================
+        member = None
+
+        # Упоминание <@123456789> или <@!123456789>
+        mention_match = re.fullmatch(r"<@!?(\d+)>", user.strip())
+
+        if mention_match:
+            discord_id = int(mention_match.group(1))
+            member = interaction.guild.get_member(discord_id)
+
+        # Просто Discord ID
+        elif user.strip().isdigit():
+            discord_id = int(user.strip())
+            member = interaction.guild.get_member(discord_id)
+
+        # Если не нашли по ID, ищем по нику
+        if not member:
+            clean_nick = normalize_nick(user.strip())
+
+            member = next(
+                (
+                    m for m in interaction.guild.members
+                    if normalize_nick(m.display_name).lower() == clean_nick.lower()
+                ),
+                None
+            )
+
+        if not member:
+            await interaction.followup.send(
+                f"❌ Пользователь `{user}` не найден на сервере."
+            )
+            return
+
+        # ==========================================
+        # 2. Ищем сотрудника в составе
+        # ==========================================
+        clean_nick = normalize_nick(member.display_name)
+
+        existing = next(
+            (
+                m for m in staff_list
+                if normalize_nick(m['nick']).lower() == clean_nick.lower()
+            ),
+            None
+        )
+
         if not existing:
-            await interaction.followup.send(f"❌ {nick} не найден в составе.")
+            await interaction.followup.send(
+                f"❌ {member.mention} не найден в составе."
+            )
             return
+
+        # ==========================================
+        # 3. Проверяем текущую должность
+        # ==========================================
         old_position = existing['position']
+
+        if old_position == new_position:
+            await interaction.followup.send(
+                f"❌ У {member.mention} уже стоит должность `{new_position}`."
+            )
+            return
+
+        # ==========================================
+        # 4. Меняем должность в составе
+        # ==========================================
         existing['position'] = new_position
         save_staff()
-        user = None
-        for member in interaction.guild.members:
-            if normalize_nick(member.display_name) == clean_nick:
-                user = member
-                break
-        if user:
-            old_role_id = POSITION_TO_ROLE.get(old_position)
-            if old_role_id:
-                old_role = interaction.guild.get_role(old_role_id)
-                if old_role and old_role in user.roles:
-                    await user.remove_roles(old_role)
-            new_role_id = POSITION_TO_ROLE.get(new_position)
-            if new_role_id:
-                new_role = interaction.guild.get_role(new_role_id)
-                if new_role:
-                    await user.add_roles(new_role)
-            # Снимаем Обзвон FT
-            obzvon_role = interaction.guild.get_role(1366434300970532955)
-            if obzvon_role and obzvon_role in user.roles:
-                await user.remove_roles(obzvon_role)
-            user_mention = user.mention
-        else:
-            user_mention = clean_nick
-            print(f"⚠️ Пользователь {clean_nick} не найден на сервере, роли не менялись")
+
+        # ==========================================
+        # 5. Снимаем старую роль
+        # ==========================================
+        old_role_id = POSITION_TO_ROLE.get(old_position)
+
+        if old_role_id:
+            old_role = interaction.guild.get_role(old_role_id)
+
+            if old_role and old_role in member.roles:
+                await member.remove_roles(old_role)
+
+        # ==========================================
+        # 6. Выдаём новую роль
+        # ==========================================
+        new_role_id = POSITION_TO_ROLE.get(new_position)
+
+        if new_role_id:
+            new_role = interaction.guild.get_role(new_role_id)
+
+            if new_role:
+                await member.add_roles(new_role)
+
+        # ==========================================
+        # 7. Снимаем роль "Обзвон FT"
+        # ==========================================
+        obzvon_role = interaction.guild.get_role(1366434300970532955)
+
+        if obzvon_role and obzvon_role in member.roles:
+            await member.remove_roles(obzvon_role)
+
+        # ==========================================
+        # 8. Лог повышения
+        # ==========================================
         channel = bot.get_channel(CHANNELS['учет_принятых_повышенных'])
+
         embed = discord.Embed(
             title="📈 Сотрудник повышен",
             color=discord.Color.gold(),
             timestamp=datetime.datetime.now()
         )
-        embed.add_field(name="1. Пинг сотрудника", value=user_mention, inline=False)
-        embed.add_field(name="2. Ник", value=clean_nick, inline=False)
-        embed.add_field(name="3. Повышен на должность", value=f"[{new_position}]", inline=False)
-        embed.add_field(name="4. Кто повысил", value=interaction.user.mention, inline=False)
-        embed.set_footer(text=f"Было: {old_position} → Стало: {new_position}")
+
+        embed.add_field(
+            name="1. Пинг сотрудника",
+            value=member.mention,
+            inline=False
+        )
+
+        embed.add_field(
+            name="2. Discord ID",
+            value=f"`{member.id}`",
+            inline=False
+        )
+
+        embed.add_field(
+            name="3. Ник",
+            value=clean_nick,
+            inline=False
+        )
+
+        embed.add_field(
+            name="4. Повышен на должность",
+            value=f"[{new_position}]",
+            inline=False
+        )
+
+        embed.add_field(
+            name="5. Кто повысил",
+            value=interaction.user.mention,
+            inline=False
+        )
+
+        embed.set_footer(
+            text=f"Было: {old_position} → Стало: {new_position}"
+        )
+
         if channel:
             await channel.send(embed=embed)
+
+        # ==========================================
+        # 9. Обновляем сообщение состава
+        # ==========================================
         await update_staff_message()
-        await interaction.followup.send(f"✅ {nick} повышен до {new_position}")
+
+        await interaction.followup.send(
+            f"✅ {member.mention} повышен с **{old_position}** "
+            f"до **{new_position}**."
+        )
+
     except discord.errors.NotFound:
         print("⚠️ Взаимодействие для повысить истекло")
+
     except Exception as e:
         print(f"❌ Ошибка в повысить: {e}")
-        await interaction.followup.send(f"❌ Ошибка: {e}")
+        await interaction.followup.send(
+            f"❌ Ошибка: {e}"
+        )
 
 # 8. /принять
 @bot.tree.command(name="принять", description="Принять нового сотрудника в состав")
