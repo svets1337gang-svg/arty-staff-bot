@@ -7,6 +7,8 @@ import json
 import os
 import asyncio
 from typing import Optional
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
 
 from config import (
     DISCORD_TOKEN, CHANNELS, ROLES, ROLES_TO_REMOVE,
@@ -794,6 +796,94 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         print("⚠️ Взаимодействие для отгул истекло")
     except Exception as e:
         print(f"❌ Ошибка в отгул: {e}")
+        await interaction.followup.send(f"❌ Ошибка: {e}")
+
+# 14. /выдатьдоступ
+@bot.tree.command(name="выдатьдоступ", description="Выдать доступ к таблице (Читатель) и форме (Респондент) по email")
+@app_commands.describe(email="Email пользователя")
+@has_staff_role_check()
+async def grant_access(interaction: discord.Interaction, email: str):
+    try:
+        await interaction.response.defer(thinking=True)
+        
+        email = email.strip().lower()
+        
+        if not email or '@' not in email:
+            await interaction.followup.send("❌ Укажите корректный email.")
+            return
+        
+        creds = Credentials.from_service_account_file('credentials.json')
+        drive_service = build('drive', 'v3', credentials=creds)
+        
+        results = []
+        
+        # ===== 1. ВЫДАЁМ ДОСТУП К ТАБЛИЦЕ (ЧИТАТЕЛЬ) =====
+        try:
+            permission = {
+                'type': 'user',
+                'role': 'reader',
+                'emailAddress': email
+            }
+            drive_service.permissions().create(
+                fileId=GOOGLE_SHEETS_ID,
+                body=permission,
+                sendNotificationEmail=False
+            ).execute()
+            results.append("✅ Доступ к таблице (Читатель) выдан.")
+        except Exception as e:
+            if 'already exists' in str(e).lower():
+                results.append("⚠️ Доступ к таблице уже есть.")
+            else:
+                results.append(f"❌ Ошибка при выдаче доступа к таблице: {str(e)}")
+        
+        # ===== 2. ВЫДАЁМ ДОСТУП К ФОРМЕ (РЕСПОНДЕНТ) =====
+        try:
+            form_id = os.getenv('GOOGLE_FORM_ID')
+            if form_id:
+                if '/e/' in form_id:
+                    form_id = form_id.split('/e/')[-1].split('/')[0]
+                if '/d/' in form_id:
+                    form_id = form_id.split('/d/')[-1].split('/')[0]
+                
+                # Для формы нужен доступ "читатель" с view='published'
+                permission_form = {
+                    'type': 'user',
+                    'role': 'reader',
+                    'emailAddress': email,
+                    'view': 'published'  # Это даёт права Респондента
+                }
+                drive_service.permissions().create(
+                    fileId=form_id,
+                    body=permission_form,
+                    sendNotificationEmail=False
+                ).execute()
+                results.append("✅ Доступ к форме (Респондент) выдан.")
+            else:
+                results.append("⚠️ ID формы не указан в .env")
+        except Exception as e:
+            if 'already exists' in str(e).lower():
+                results.append("⚠️ Доступ к форме уже есть.")
+            elif 'File not found' in str(e):
+                results.append("❌ Форма не найдена. Проверьте GOOGLE_FORM_ID.")
+            else:
+                results.append(f"❌ Ошибка при выдаче доступа к форме: {str(e)}")
+        
+        # ===== 3. ОТВЕТ =====
+        embed = discord.Embed(
+            title="🔑 Выдача доступа",
+            color=discord.Color.green(),
+            timestamp=datetime.datetime.now()
+        )
+        embed.add_field(name="Email", value=email, inline=False)
+        embed.add_field(name="Результат", value="\n".join(results), inline=False)
+        embed.set_footer(text=f"Выдал: {interaction.user.display_name}")
+        
+        await interaction.followup.send(embed=embed)
+        
+    except discord.errors.NotFound:
+        print("⚠️ Взаимодействие для выдатьдоступ истекло")
+    except Exception as e:
+        print(f"❌ Ошибка в выдатьдоступ: {e}")
         await interaction.followup.send(f"❌ Ошибка: {e}")
         
 # ============ АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ СОСТАВА ============
