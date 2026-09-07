@@ -529,6 +529,90 @@ class SheetsManager:
 
 
     # =========================================================
+    # ОТГУЛ
+    # =========================================================
+
+    def find_column_by_date(self, date_str: str) -> int:
+        """
+        Находит колонку с указанной датой в первой строке.
+        date_str: '08.09' - день.месяц
+        """
+        try:
+            if not date_str:
+                return None
+
+            # Получаем первую строку (заголовки дат)
+            header_row = self.sheet.row_values(1)
+
+            # Ищем дату в заголовках
+            for col_idx, value in enumerate(header_row, start=1):
+                if value and date_str in str(value):
+                    return col_idx
+
+            return None
+
+        except Exception as e:
+            print(f"❌ Ошибка поиска даты: {e}")
+            return None
+
+
+    def copy_cell_style_with_value(
+        self,
+        source_row: int,
+        source_col: int,
+        target_row: int,
+        target_col: int
+    ) -> bool:
+        """
+        Копирует значение и стиль из одной ячейки в другую.
+        Используется для копирования ячейки "ОТГУЛ" с оранжевым фоном.
+        """
+        try:
+            spreadsheet = self.gc.open_by_key(GOOGLE_SHEETS_ID)
+            sheet_id = self.sheet.id
+
+            body = {
+                "requests": [{
+                    "copyPaste": {
+                        "source": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": source_row - 1,
+                            "endRowIndex": source_row,
+                            "startColumnIndex": source_col - 1,
+                            "endColumnIndex": source_col
+                        },
+                        "destination": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": target_row - 1,
+                            "endRowIndex": target_row,
+                            "startColumnIndex": target_col - 1,
+                            "endColumnIndex": target_col
+                        },
+                        "pasteType": "PASTE_NORMAL"  # Копирует всё: значение + формат
+                    }
+                }]
+            }
+
+            spreadsheet.batch_update(body)
+            return True
+
+        except Exception as e:
+            print(f"❌ Ошибка копирования стиля: {e}")
+            return False
+
+
+    def get_cell_value(self, row: int, column: int) -> str:
+        """
+        Получить значение ячейки по номеру строки и колонки.
+        """
+        try:
+            return self.sheet.cell(row, column).value
+        except Exception as e:
+            print(f"❌ Ошибка чтения ячейки: {e}")
+            return None
+
+
+    # =========================================================
     # GOOGLE FORM
     # =========================================================
 
