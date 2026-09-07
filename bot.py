@@ -716,14 +716,21 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             return
 
         # ==========================================
-        # 3. ПРОВЕРЯЕМ БАЛЛЫ
+        # 3. ПРОВЕРЯЕМ БАЛЛЫ (ИСПРАВЛЕНО!)
         # ==========================================
 
         points_raw = user_data.get('points', '0')
+        
+        # Убираем пробелы и другие разделители
+        points_clean = str(points_raw).strip()
+        points_clean = points_clean.replace(' ', '').replace(',', '').replace('\u00a0', '')
+        
         try:
-            current_points = int(points_raw.strip())
-        except:
+            current_points = int(float(points_clean))
+        except (ValueError, TypeError):
             current_points = 0
+
+        print(f"🔍 Отгул: points_raw='{points_raw}', points_clean='{points_clean}', current_points={current_points}")
 
         COST = 100  # Стоимость отгула
 
@@ -798,9 +805,13 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
 
         check_data = sheets.get_user_data(row)
         saved_points_raw = check_data.get('points', '0')
+        
+        saved_points_clean = str(saved_points_raw).strip()
+        saved_points_clean = saved_points_clean.replace(' ', '').replace(',', '').replace('\u00a0', '')
+        
         try:
-            saved_points = int(saved_points_raw.strip())
-        except:
+            saved_points = int(float(saved_points_clean))
+        except (ValueError, TypeError):
             saved_points = 0
 
         if saved_points != new_points:
@@ -809,9 +820,13 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
 
             check_data = sheets.get_user_data(row)
             saved_points_raw = check_data.get('points', '0')
+            
+            saved_points_clean = str(saved_points_raw).strip()
+            saved_points_clean = saved_points_clean.replace(' ', '').replace(',', '').replace('\u00a0', '')
+            
             try:
-                saved_points = int(saved_points_raw.strip())
-            except:
+                saved_points = int(float(saved_points_clean))
+            except (ValueError, TypeError):
                 saved_points = 0
 
             if saved_points != new_points:
@@ -842,7 +857,6 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             await interaction.followup.send(f"❌ Ошибка при оформлении отгула: `{e}`")
         except:
             pass
-
 # 14. /выдатьдоступ
 @bot.tree.command(
     name="выдатьдоступ",
