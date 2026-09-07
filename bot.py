@@ -703,7 +703,7 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             return
         points_col = 3
         current_points = int(user_data['points']) if user_data['points'].isdigit() else 0
-        new_points = current_points - 40
+        new_points = current_points - 100
         if new_points < 0:
             new_points = 0
         sheets.update_user(row, points_col, str(new_points))
