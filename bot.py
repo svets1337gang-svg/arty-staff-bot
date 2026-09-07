@@ -102,19 +102,14 @@ async def on_ready():
     print(f'📋 Загружено {len(staff_list)} сотрудников в составе')
 
     try:
-        # ID Discord-сервера
         guild_id = 1247251922579099719
         guild = discord.Object(id=guild_id)
 
-        # Копируем глобальные команды на сервер
-        bot.tree.copy_global_to(guild=guild)
-
-        # Синхронизируем команды
+        # Синхронизируем команды только с этим сервером.
         synced = await bot.tree.sync(guild=guild)
 
-        print(f'✅ Синхронизировано команд: {len(synced)}')
+        print(f'✅ Синхронизировано команд на сервере: {len(synced)}')
         print('📋 Команды синхронизированы на сервере')
-
     except Exception as e:
         print(f'❌ Ошибка синхронизации команд: {e}')
 
@@ -826,8 +821,9 @@ async def grant_access(interaction: discord.Interaction, email: str):
 async def sync_commands(interaction: discord.Interaction):
     try:
         await interaction.response.defer(thinking=True)
-        await bot.tree.sync()
-        await interaction.followup.send("✅ Команды синхронизированы!")
+        guild = discord.Object(id=1247251922579099719)
+        synced = await bot.tree.sync(guild=guild)
+        await interaction.followup.send(f"✅ Команды синхронизированы! Всего: {len(synced)}")
     except Exception as e:
         await interaction.followup.send(f"❌ Ошибка синхронизации: {e}")
 
