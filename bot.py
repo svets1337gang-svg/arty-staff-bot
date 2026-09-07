@@ -109,12 +109,10 @@ async def stat(interaction: discord.Interaction, user: discord.Member):
     try:
         await interaction.response.defer(thinking=True)
         
-        # Пробуем найти по нику
         clean_nick = normalize_nick(user.display_name)
         user_data = sheets.find_user_by_nick_fuzzy(clean_nick)
         
         if not user_data:
-            # Если не нашли — пробуем найти по display_name (с приписками)
             print(f"⚠️ Поиск по {clean_nick} не дал результатов, пробуем по {user.display_name}")
             user_data = sheets.find_user_by_nick(user.display_name)
         
@@ -226,20 +224,17 @@ async def warning(interaction: discord.Interaction, user: discord.Member, reason
         current_warnings = user_data['warnings_count']
         current_warns = user_data['warns_count']
         
-        # Добавляем устники
         new_warnings = current_warnings + count
         conversions = new_warnings // 3
         remaining_warnings = new_warnings % 3
         
         row = user_data['row']
         
-        # Обновляем таблицу (один раз)
         if conversions > 0:
             new_warns = current_warns + conversions
             if new_warns >= 3:
                 sheets.update_user(row, 4, '3/3')
                 sheets.update_user(row, 5, f'{remaining_warnings}/3')
-                # Даём время на запись в таблицу
                 await asyncio.sleep(0.5)
                 await remove_user(interaction, user, f"3/3 предупреждений ({conversions}x 3 устника → варн, причина: {reason})")
                 return
@@ -251,10 +246,8 @@ async def warning(interaction: discord.Interaction, user: discord.Member, reason
             new_warnings_str = f'{new_warnings}/3'
             sheets.update_user(row, 5, new_warnings_str)
         
-        # Даём время на запись в таблицу
         await asyncio.sleep(0.5)
         
-        # Получаем обновлённые данные для сообщения
         updated_data = sheets.get_user_data(row)
         
         channel = bot.get_channel(CHANNELS['наказания'])
@@ -290,7 +283,6 @@ async def remove_warn(interaction: discord.Interaction, user: discord.Member):
         await interaction.response.defer(thinking=True)
         clean_nick = normalize_nick(user.display_name)
         
-        # Используем метод remove_penalty из sheets.py
         result = sheets.remove_penalty(clean_nick, 'варн')
         
         await interaction.followup.send(result['message'])
@@ -308,7 +300,6 @@ async def remove_warning(interaction: discord.Interaction, user: discord.Member)
         await interaction.response.defer(thinking=True)
         clean_nick = normalize_nick(user.display_name)
         
-        # Используем новый метод remove_penalty
         result = sheets.remove_penalty(clean_nick, 'устник')
         
         await interaction.followup.send(result['message'])
@@ -339,14 +330,11 @@ async def remove_user(interaction, user: discord.Member, reason: str):
             await interaction.followup.send(f"❌ Пользователь {user.mention} не найден в таблице.")
             return
 
-        # Получаем email для удаления доступа
         email = user_data.get('email', '')
         
-        # Удаляем из состава
         staff_list = [m for m in staff_list if m['nick'] != clean_nick]
         save_staff()
 
-        # Снимаем роли
         removed_roles = []
         for role in user.roles:
             if role.id in ROLES_TO_REMOVE:
@@ -356,7 +344,6 @@ async def remove_user(interaction, user: discord.Member, reason: str):
                 except:
                     pass
         
-        # Удаляем доступ к таблице и форме (если есть email)
         access_message = ""
         if email:
             result = sheets.full_remove_user(email)
@@ -413,14 +400,12 @@ async def promote(interaction: discord.Interaction, nick: str, new_position: str
         existing['position'] = new_position
         save_staff()
         
-        # Ищем пользователя в Discord по нику
         user = None
         for member in interaction.guild.members:
             if normalize_nick(member.display_name) == clean_nick:
                 user = member
                 break
         
-        # Меняем роли, если пользователь найден
         if user:
             old_role_id = POSITION_TO_ROLE.get(old_position)
             if old_role_id:
@@ -439,7 +424,6 @@ async def promote(interaction: discord.Interaction, nick: str, new_position: str
             user_mention = clean_nick
             print(f"⚠️ Пользователь {clean_nick} не найден на сервере, роли не менялись")
         
-        # Отправляем уведомление в канал учёта
         channel = bot.get_channel(CHANNELS['учет_принятых_повышенных'])
         embed = discord.Embed(
             title="📈 Сотрудник повышен",
@@ -473,16 +457,13 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
     try:
         await interaction.response.defer(thinking=True)
         
-        # Проверяем, существует ли должность
         if position not in ALL_POSITIONS:
             positions_list = "\n".join(ALL_POSITIONS)
             await interaction.followup.send(f"❌ Должность '{position}' не найдена.\nДоступные должности:\n{positions_list}")
             return
         
-        # Получаем роли пользователя
         user_roles = [role.id for role in interaction.user.roles]
         
-        # Проверяем, есть ли у пользователя доступ к команде (Обзванивающий или Зам. Куратора+)
         has_accept_permission = any(role in ACCEPT_ROLES for role in user_roles)
         if not has_accept_permission:
             await interaction.followup.send(
@@ -491,10 +472,8 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
             )
             return
         
-        # Проверяем, есть ли у пользователя полный доступ (Зам. Куратора+)
         has_full_access = any(role in STAFF_ROLES for role in user_roles)
         
-        # Ограничения для обзванивающих
         allowed_positions = ['Стажер', 'Мл. Поддержка']
         if not has_full_access and position not in allowed_positions:
             await interaction.followup.send(
@@ -504,18 +483,15 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
             )
             return
         
-        # Проверяем, есть ли уже в составе
         clean_nick = normalize_nick(user.display_name)
         existing = next((m for m in staff_list if m['nick'] == clean_nick), None)
         if existing:
             await interaction.followup.send(f"❌ {user.mention} уже есть в составе.")
             return
         
-        # Добавляем в состав
         staff_list.append({'nick': clean_nick, 'position': position})
         save_staff()
         
-        # Выдаём роли
         role_id = POSITION_TO_ROLE.get(position)
         if role_id:
             role = interaction.guild.get_role(role_id)
@@ -526,10 +502,8 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
         if staff_role:
             await user.add_roles(staff_role)
         
-        # ===== 1. УВЕДОМЛЕНИЕ В КАНАЛ УЧЁТА (разное для Стажер и остальных) =====
         channel = bot.get_channel(CHANNELS['учет_принятых_повышенных'])
         if channel:
-            # Определяем заголовок в зависимости от должности
             if position == 'Стажер':
                 title = "📥 Принят новый сотрудник"
                 color = discord.Color.green()
@@ -548,7 +522,6 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
             embed.add_field(name="4. Кто провел обзвон", value=interaction.user.mention, inline=False)
             await channel.send(embed=embed)
         
-        # ===== 2. ПРИВЕТСТВИЕ В ОБЫЧНЫЙ ЧАТ (ID: 1297555288790011977) =====
         try:
             welcome_channel = bot.get_channel(1297555288790011977)
             if welcome_channel:
@@ -563,7 +536,6 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
         except Exception as e:
             print(f"❌ Ошибка при отправке приветствия: {e}")
         
-        # Обновляем состав
         await update_staff_message()
         await interaction.followup.send(f"✅ {user.mention} принят на должность {position}")
         
@@ -607,10 +579,8 @@ async def refresh_staff(interaction: discord.Interaction):
         await interaction.response.defer(thinking=True)
         global staff_message_id
         
-        # Сбрасываем ID сообщения, чтобы бот создал новое
         staff_message_id = None
         
-        # Обновляем состав
         await update_staff_message()
         
         await interaction.followup.send("✅ Состав успешно обновлён!")
@@ -729,16 +699,16 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             await interaction.followup.send(f"❌ Пользователь {user.mention} не найден в таблице.")
             return
         
-        row = user_data['row']  # Строка сотрудника
+        row = user_data['row']
         
-        # ===== 1. Находим колонку с датой =====
-        date_col = sheets.find_column_by_date(date)
+        # Находим колонку с датой (с учетом блока сотрудника)
+        date_col = sheets.find_column_by_date_for_user(row, date)
         
         if not date_col:
             await interaction.followup.send(f"❌ Дата {date} не найдена в таблице.")
             return
         
-        # ===== 2. Копируем значение и стиль из B80 =====
+        # Копируем значение и стиль из B80
         source_row = 80
         source_col = 2  # B
         
@@ -754,8 +724,8 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             await interaction.followup.send("❌ Ошибка при копировании отгула.")
             return
         
-        # ===== 3. Снимаем баллы (40) =====
-        points_col = 3  # Колонка C
+        # Снимаем баллы (40)
+        points_col = 3
         current_points = int(user_data['points']) if user_data['points'].isdigit() else 0
         new_points = current_points - 40
         
@@ -764,7 +734,7 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         
         sheets.update_user(row, points_col, str(new_points))
         
-        # ===== 4. Отправляем уведомление =====
+        # Отправляем уведомление
         channel = bot.get_channel(CHANNELS['наказания'])
         embed = discord.Embed(
             title="📅 Оформлен отгул",
@@ -805,12 +775,10 @@ async def update_staff_message():
     if not staff_list:
         content = "📋 СОСТАВ FT\n\nСотрудников пока нет"
     else:
-        # Формируем список сотрудников в тройных кавычках
         staff_text = ""
         for member in staff_list:
             staff_text += f"• {member['nick']} — {member['position']}\n"
         
-        # Формируем полное сообщение
         content = f"""📋 СОСТАВ FT
 
 ```\n{staff_text}```
@@ -831,8 +799,7 @@ https://docs.google.com/spreadsheets/d/1-3ER99-RpUkPdeRE4JC5s0KRnV1unqNnmNQhtf4J
         else:
             async for msg in channel.history(limit=100):
                 if msg.author == bot.user and msg.content.startswith('📋 СОСТАВ FT'):
-                    staff_message_id = msg.id
-                    await msg.edit(content=content)
+                    staff_message_id = msg.id                    await msg.edit(content=content)
                     return
             msg = await channel.send(content)
             staff_message_id = msg.id
