@@ -409,8 +409,8 @@ class SheetsManager:
         )
 
         costs = {
-            'устник': 50,
-            'варн': 100
+            'устник': 175,
+            'варн': 500
         }
 
         if penalty_type not in costs:
