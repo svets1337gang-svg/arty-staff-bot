@@ -726,7 +726,7 @@ async def grant_access(interaction: discord.Interaction, email: str):
         await interaction.response.defer(thinking=True)
 
         email = email.strip().lower()
-        if not email or not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email):
+        if not email or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
             await interaction.followup.send("❌ Укажите корректный email.")
             return
 
@@ -823,7 +823,7 @@ async def sync_commands(interaction: discord.Interaction):
         await interaction.response.defer(thinking=True)
         guild = discord.Object(id=1247251922579099719)
         synced = await bot.tree.sync(guild=guild)
-        await interaction.followup.send(f"✅ Команды синхронизированы! Всего: {len(synced)}")
+        await interaction.followup.send(f"✅ Команды синхронизированы!")
     except Exception as e:
         await interaction.followup.send(f"❌ Ошибка синхронизации: {e}")
 
