@@ -10,10 +10,7 @@ def normalize_nick(nick: str) -> str:
     if not nick:
         return ''
 
-    # Убираем невидимые Unicode-символы
     nick = re.sub(r'[\u200b-\u200f\u202a-\u202e\ufeff]', '', str(nick))
-
-    # Убираем служебные части ника
     nick = re.sub(r'\[[^\]]*\]', '', nick)
     nick = re.sub(r'\([^)]*\)', '', nick)
     nick = re.sub(r'\{[^}]*\}', '', nick)
@@ -77,7 +74,6 @@ class SheetsManager:
             if not clean_nick:
                 return None
 
-            # Ищем ТОЛЬКО в колонке A
             values = self.sheet.col_values(1)
 
             for row_num, value in enumerate(values, start=1):
@@ -101,13 +97,11 @@ class SheetsManager:
 
             values = self.sheet.col_values(1)
 
-            # Сначала точное совпадение
             for row_num, value in enumerate(values, start=1):
 
                 if normalize_nick(value) == clean_nick:
                     return self.get_user_data(row_num)
 
-            # Затем частичное совпадение
             for row_num, value in enumerate(values, start=1):
 
                 if row_num == 1:
@@ -210,29 +204,28 @@ class SheetsManager:
     # ИЗМЕНЕНИЕ ТАБЛИЦЫ
     # =========================================================
 
-def update_user(self, row, column, value):
-    try:
-        self.sheet.update_cell(row, column, value)
+    def update_user(self, row, column, value):
+        try:
+            self.sheet.update_cell(row, column, value)
 
-        # Проверяем, что Google Таблицы реально сохранили значение
-        saved_value = self.sheet.cell(row, column).value
+            saved_value = self.sheet.cell(row, column).value
 
-        if str(saved_value).strip() != str(value).strip():
+            if str(saved_value).strip() != str(value).strip():
+                print(
+                    f"❌ Ошибка записи в таблицу: "
+                    f"ожидалось '{value}', получено '{saved_value}'"
+                )
+                return False
+
             print(
-                f"❌ Ошибка записи в таблицу: "
-                f"ожидалось '{value}', получено '{saved_value}'"
+                f"✅ Таблица обновлена: "
+                f"строка {row}, колонка {column} → '{value}'"
             )
+            return True
+
+        except Exception as e:
+            print(f"❌ Ошибка update_user: {e}")
             return False
-
-        print(
-            f"✅ Таблица обновлена: "
-            f"строка {row}, колонка {column} → '{value}'"
-        )
-        return True
-
-    except Exception as e:
-        print(f"❌ Ошибка update_user: {e}")
-        return False
 
 
     def add_user(
@@ -339,7 +332,6 @@ def update_user(self, row, column, value):
             if not target:
                 return None
 
-            # Email находится в колонке F
             values = self.sheet.col_values(6)
 
             for row_num, value in enumerate(
@@ -500,15 +492,12 @@ def update_user(self, row, column, value):
 
         row = user_data['row']
 
-        # Баллы — колонка C
         self.update_user(
             row,
             3,
             str(new_points)
         )
 
-        # Варны — D
-        # Устники — E
         col = (
             4
             if penalty_type == 'варн'
@@ -553,10 +542,8 @@ def update_user(self, row, column, value):
             if not date_str:
                 return None
 
-            # Получаем первую строку (заголовки дат)
             header_row = self.sheet.row_values(1)
 
-            # Ищем дату в заголовках
             for col_idx, value in enumerate(header_row, start=1):
                 if value and date_str in str(value):
                     return col_idx
@@ -580,41 +567,32 @@ def update_user(self, row, column, value):
 
             date_str = date_str.strip()
 
-            # Определяем, в каком блоке находится сотрудник
             if row < 60:
-                # Блок 1: даты в строке 15
                 header_row_num = 15
                 print(f"🔍 Сотрудник в блоке 1 (строка {row}), даты в строке {header_row_num}")
             else:
-                # Блок 2: даты в строке 60
                 header_row_num = 60
                 print(f"🔍 Сотрудник в блоке 2 (строка {row}), даты в строке {header_row_num}")
 
-            # Получаем строку с датами
             header_row = self.sheet.row_values(header_row_num)
 
             print(f"🔍 Ищем дату: '{date_str}'")
             print(f"📋 Заголовки (первые 10): {header_row[:10]}...")
 
-            # Ищем дату в заголовках
             for col_idx, value in enumerate(header_row, start=1):
                 if not value:
                     continue
 
                 value_str = str(value).strip()
 
-                # Проверяем разные форматы
-                # 1. Точное совпадение
                 if date_str == value_str:
                     print(f"✅ Найдено точное совпадение: колонка {col_idx}")
                     return col_idx
 
-                # 2. Вхождение (например, '12.09' в '12.09.2026')
                 if date_str in value_str:
                     print(f"✅ Найдено вхождение: колонка {col_idx} ('{value_str}')")
                     return col_idx
 
-                # 3. Без точки
                 if date_str.replace('.', '') == value_str.replace('.', '').replace('/', ''):
                     print(f"✅ Найдено совпадение без точки: колонка {col_idx}")
                     return col_idx
@@ -659,7 +637,7 @@ def update_user(self, row, column, value):
                             "startColumnIndex": target_col - 1,
                             "endColumnIndex": target_col
                         },
-                        "pasteType": "PASTE_NORMAL"  # Копирует всё: значение + формат
+                        "pasteType": "PASTE_NORMAL"
                     }
                 }]
             }
@@ -699,8 +677,6 @@ def update_user(self, row, column, value):
         if not form_id:
             return ''
 
-        # Можно указать целую ссылку:
-        # https://docs.google.com/forms/d/ID/edit
         match = re.search(
             r'/forms/d/([^/]+)',
             form_id
@@ -709,7 +685,6 @@ def update_user(self, row, column, value):
         if match:
             return match.group(1)
 
-        # Или просто ID
         return (
             form_id
             .split('?')[0]
@@ -756,9 +731,6 @@ def update_user(self, row, column, value):
                     'pageToken'
                 ] = page_token
 
-            # КРИТИЧЕСКИ ВАЖНО:
-            # это позволяет увидеть
-            # "Респондента"
             if include_published:
 
                 kwargs[
@@ -797,14 +769,7 @@ def update_user(self, row, column, value):
     ) -> dict:
 
         """
-        Удаляет прямые права пользователя
-        с Google Form:
-
-        - Редактор
-        - Респондент
-
-        Для Респондента используется
-        published permissions view.
+        Удаляет прямые права пользователя с Google Form.
         """
 
         form_id = self._get_form_id()
@@ -845,9 +810,6 @@ def update_user(self, row, column, value):
                 credentials=creds
             )
 
-            # ВАЖНО:
-            # includePermissionsForView='published'
-            # нужен для Респондентов.
             permissions = (
                 self._list_all_permissions(
                     drive_service,
@@ -948,10 +910,6 @@ def update_user(self, row, column, value):
                         f"{e}"
                     )
 
-            # -------------------------------------------------
-            # ПРОВЕРКА ПОСЛЕ УДАЛЕНИЯ
-            # -------------------------------------------------
-
             remaining = (
                 self._list_all_permissions(
                     drive_service,
@@ -986,7 +944,6 @@ def update_user(self, row, column, value):
                         permission
                     )
 
-            # Если остался прямой доступ
             if still_present:
 
                 details = ', '.join(
