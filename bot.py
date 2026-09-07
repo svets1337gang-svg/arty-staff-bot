@@ -716,23 +716,20 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             return
 
         # ==========================================
-        # 3. ПРОВЕРЯЕМ БАЛЛЫ (ИСПРАВЛЕНО!)
+        # 3. ПРОВЕРЯЕМ БАЛЛЫ
         # ==========================================
 
         points_raw = user_data.get('points', '0')
-        
-        # Убираем пробелы и другие разделители
-        points_clean = str(points_raw).strip()
-        points_clean = points_clean.replace(' ', '').replace(',', '').replace('\u00a0', '')
+        points_clean = str(points_raw).strip().replace(' ', '').replace(',', '').replace('\u00a0', '')
         
         try:
             current_points = int(float(points_clean))
         except (ValueError, TypeError):
             current_points = 0
 
-        print(f"🔍 Отгул: points_raw='{points_raw}', points_clean='{points_clean}', current_points={current_points}")
+        print(f"🔍 Отгул: points_raw='{points_raw}', current_points={current_points}")
 
-        COST = 100  # Стоимость отгула
+        COST = 100
 
         if current_points < COST:
             await interaction.followup.send(
@@ -743,14 +740,24 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             return
 
         # ==========================================
-        # 4. ПРОВЕРЯЕМ, ЧТО ЯЧЕЙКА СВОБОДНА
+        # 4. ПРОВЕРЯЕМ ЯЧЕЙКУ (с учётом "пустых" значений)
         # ==========================================
 
         old_value = sheets.get_cell_value(row, date_col)
 
-        if old_value and str(old_value).strip():
+        # Список значений, которые считаются "пустыми"
+        empty_values = ['', 'н/а', '—', '-', ' ', 'N/A', 'na', 'нет', 'пусто', '0', 'None', 'null']
+
+        is_empty = (
+            old_value is None 
+            or str(old_value).strip() == '' 
+            or str(old_value).strip().lower() in empty_values
+        )
+
+        if not is_empty:
             await interaction.followup.send(
-                f"❌ На дату `{date}` уже есть значение: `{old_value}`"
+                f"❌ На дату `{date}` уже есть значение: `{old_value}`\n"
+                f"Чтобы перезаписать, используй команду с параметром `force: true`"
             )
             return
 
@@ -758,7 +765,7 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         # 5. КОПИРУЕМ ОТГУЛ ИЗ B80
         # ==========================================
 
-        source_value = sheets.get_cell_value(80, 2)  # B80
+        source_value = sheets.get_cell_value(80, 2)
 
         if not source_value or "отгул" not in str(source_value).casefold():
             await interaction.followup.send(
@@ -806,8 +813,7 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         check_data = sheets.get_user_data(row)
         saved_points_raw = check_data.get('points', '0')
         
-        saved_points_clean = str(saved_points_raw).strip()
-        saved_points_clean = saved_points_clean.replace(' ', '').replace(',', '').replace('\u00a0', '')
+        saved_points_clean = str(saved_points_raw).strip().replace(' ', '').replace(',', '').replace('\u00a0', '')
         
         try:
             saved_points = int(float(saved_points_clean))
@@ -821,8 +827,7 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             check_data = sheets.get_user_data(row)
             saved_points_raw = check_data.get('points', '0')
             
-            saved_points_clean = str(saved_points_raw).strip()
-            saved_points_clean = saved_points_clean.replace(' ', '').replace(',', '').replace('\u00a0', '')
+            saved_points_clean = str(saved_points_raw).strip().replace(' ', '').replace(',', '').replace('\u00a0', '')
             
             try:
                 saved_points = int(float(saved_points_clean))
@@ -857,6 +862,7 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             await interaction.followup.send(f"❌ Ошибка при оформлении отгула: `{e}`")
         except:
             pass
+            
 # 14. /выдатьдоступ
 @bot.tree.command(
     name="выдатьдоступ",
