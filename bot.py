@@ -33,7 +33,7 @@ def get_google_service():
     except Exception as e:
         print(f"❌ Ошибка создания Google сервиса: {e}")
         return None
-        
+
 # ===== ФУНКЦИЯ НОРМАЛИЗАЦИИ НИКА =====
 def normalize_nick(nick: str) -> str:
     """Очищает ник от приписок типа [x901-101], (x901), {x901} и т.д."""
@@ -114,7 +114,6 @@ async def on_ready():
         guild_id = 1247251922579099719
         guild = discord.Object(id=guild_id)
 
-        # Синхронизируем команды только с этим сервером.
         synced = await bot.tree.sync(guild=guild)
 
         print(f'✅ Синхронизировано команд на сервере: {len(synced)}')
@@ -435,8 +434,6 @@ async def promote(interaction: discord.Interaction, nick: str, new_position: str
     user="Игрок",
     position="Должность (Стажер или Мл. Поддержка для обзванивающих, остальные - только для зам. куратора+)"
 )
-# /принять сохраняет отдельную проверку ACCEPT_ROLES, потому что команда доступна
-# не только STAFF_ROLES, но и роли обзванивающих.
 async def accept_staff(interaction: discord.Interaction, user: discord.Member, position: str):
     try:
         await interaction.response.defer(thinking=True)
@@ -617,7 +614,7 @@ async def help_command(interaction: discord.Interaction):
             name="📅 Отгулы и баллы",
             value=(
                 "`/отгул @ник дата` — Оформить отгул\n"
-                "Списание **40 баллов** за отгул"
+                "Списание **100 баллов** за отгул"
             ),
             inline=False
         )
@@ -635,7 +632,7 @@ async def help_command(interaction: discord.Interaction):
             value=(
                 "Снятие устника — **50 баллов**\n"
                 "Снятие варна — **100 баллов**\n"
-                "Отгул — **40 баллов**"
+                "Отгул — **100 баллов**"
             ),
             inline=False
         )
@@ -690,10 +687,6 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
     try:
         await interaction.response.defer(thinking=True)
 
-        # ==========================================
-        # 1. Ищем сотрудника
-        # ==========================================
-
         clean_nick = normalize_nick(user.display_name)
         user_data = sheets.find_user_by_nick(clean_nick)
 
@@ -704,43 +697,15 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             return
 
         row = user_data['row']
-
-        # ==========================================
-        # 2. Проверяем дату
-        # ==========================================
-
         date = date.strip()
-
-        date_col = sheets.find_column_by_date_for_user(
-            row,
-            date
-        )
+        date_col = sheets.find_column_by_date_for_user(row, date)
 
         if not date_col:
-            await interaction.followup.send(
-                f"❌ Дата `{date}` не найдена в таблице."
-            )
+            await interaction.followup.send(f"❌ Дата `{date}` не найдена в таблице.")
             return
 
-        # ==========================================
-        # 3. Получаем текущие баллы
-        # ==========================================
-
         points_raw = user_data.get('points', '0')
-
-        # Используем parse_points из sheets.py
         current_points = sheets.parse_points(points_raw)
-
-        print(
-            f"📊 Отгул: {clean_nick} | "
-            f"строка: {row} | "
-            f"баллы в таблице: '{points_raw}' | "
-            f"распознано: {current_points}"
-        )
-
-        # ==========================================
-        # 4. Проверяем наличие 100 баллов
-        # ==========================================
 
         COST = 100
 
@@ -752,152 +717,60 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             )
             return
 
-        # ==========================================
-        # 5. Проверяем, что ячейка ещё свободна
-        # ==========================================
-
-        old_cell_value = sheets.get_cell_value(
-            row,
-            date_col
-        )
-
-        print(
-            f"📅 Ячейка отгула: "
-            f"строка {row}, колонка {date_col}, "
-            f"текущее значение: '{old_cell_value}'"
-        )
+        old_cell_value = sheets.get_cell_value(row, date_col)
 
         if old_cell_value and str(old_cell_value).strip():
             await interaction.followup.send(
-                f"❌ На дату `{date}` у сотрудника "
-                f"уже что-то указано: `{old_cell_value}`"
+                f"❌ На дату `{date}` у сотрудника уже что-то указано: `{old_cell_value}`"
             )
             return
 
-        # ==========================================
-        # 6. Копируем ОТГУЛ из B80
-        # ==========================================
-
         source_row = 80
-        source_col = 2  # B80
-
-        source_value = sheets.get_cell_value(
-            source_row,
-            source_col
-        )
-
-        print(
-            f"📋 Источник отгула B80: '{source_value}'"
-        )
+        source_col = 2
+        source_value = sheets.get_cell_value(source_row, source_col)
 
         if not source_value or "отгул" not in str(source_value).casefold():
             await interaction.followup.send(
-                "❌ В ячейке `B80` не найдено значение "
-                "**ОТГУЛ**.\n"
-                f"Сейчас в B80 находится: `{source_value}`"
+                f"❌ В ячейке `B80` не найдено значение **ОТГУЛ**.\nСейчас в B80: `{source_value}`"
             )
             return
 
-        copy_success = sheets.copy_cell_style_with_value(
-            source_row,
-            source_col,
-            row,
-            date_col
-        )
+        copy_success = sheets.copy_cell_style_with_value(source_row, source_col, row, date_col)
 
         if not copy_success:
-            await interaction.followup.send(
-                "❌ Не удалось установить отгул в таблице."
-            )
+            await interaction.followup.send("❌ Не удалось установить отгул в таблице.")
             return
-
-        # ==========================================
-        # 7. Проверяем, что ОТГУЛ реально записался
-        # ==========================================
 
         await asyncio.sleep(0.5)
 
-        new_cell_value = sheets.get_cell_value(
-            row,
-            date_col
-        )
-
-        print(
-            f"📅 После копирования: "
-            f"строка {row}, колонка {date_col}, "
-            f"значение: '{new_cell_value}'"
-        )
+        new_cell_value = sheets.get_cell_value(row, date_col)
 
         if not new_cell_value or "отгул" not in str(new_cell_value).casefold():
             await interaction.followup.send(
-                "❌ Отгул не записался в таблицу.\n"
-                f"Проверка ячейки: `{new_cell_value}`"
+                f"❌ Отгул не записался в таблицу.\nПроверка ячейки: `{new_cell_value}`"
             )
             return
 
-        # ==========================================
-        # 8. Списываем 100 баллов
-        # ==========================================
-
         new_points = current_points - COST
-
-        sheets.update_user(
-            row,
-            3,  # колонка C
-            str(new_points)
-        )
-
-        # ==========================================
-        # 9. Проверяем запись баллов
-        # ==========================================
+        sheets.update_user(row, 3, str(new_points))
 
         await asyncio.sleep(0.5)
 
         updated_user_data = sheets.get_user_data(row)
-        saved_points_raw = updated_user_data.get(
-            'points',
-            '0'
-        )
-
-        saved_points = sheets.parse_points(
-            saved_points_raw
-        )
-
-        print(
-            f"📊 После списания: "
-            f"было {current_points}, "
-            f"должно стать {new_points}, "
-            f"в таблице сейчас '{saved_points_raw}' "
-            f"→ {saved_points}"
-        )
+        saved_points = sheets.parse_points(updated_user_data.get('points', '0'))
 
         if saved_points != new_points:
-            # Пытаемся ещё раз записать правильное значение
-            sheets.update_user(
-                row,
-                3,
-                str(new_points)
-            )
-
+            sheets.update_user(row, 3, str(new_points))
             await asyncio.sleep(0.5)
-
             updated_user_data = sheets.get_user_data(row)
-            saved_points = sheets.parse_points(
-                updated_user_data.get('points', '0')
-            )
+            saved_points = sheets.parse_points(updated_user_data.get('points', '0'))
 
             if saved_points != new_points:
                 await interaction.followup.send(
-                    "❌ Отгул установлен, но баллы "
-                    "не удалось корректно обновить в таблице.\n"
-                    f"Ожидалось: `{new_points}`\n"
-                    f"В таблице: `{saved_points}`"
+                    f"❌ Отгул установлен, но баллы не удалось корректно обновить.\n"
+                    f"Ожидалось: `{new_points}`\nВ таблице: `{saved_points}`"
                 )
                 return
-
-        # ==========================================
-        # 10. Успешный результат
-        # ==========================================
 
         await interaction.followup.send(
             f"✅ Отгул оформлен {user.mention} на `{date}`.\n"
@@ -908,14 +781,10 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
 
     except discord.errors.NotFound:
         print("⚠️ Взаимодействие для отгул истекло")
-
     except Exception as e:
         print(f"❌ Ошибка в отгул: {e}")
-
         try:
-            await interaction.followup.send(
-                f"❌ Ошибка при оформлении отгула: `{e}`"
-            )
+            await interaction.followup.send(f"❌ Ошибка при оформлении отгула: `{e}`")
         except:
             pass
 
@@ -931,34 +800,22 @@ async def grant_access(interaction: discord.Interaction, email: str):
 
     email = email.strip().lower()
 
-    # Проверка email
     if not email or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         await interaction.followup.send("❌ Укажите корректный email.")
         return
 
     results = []
 
-    # =========================
-    # GOOGLE SHEETS
-    # =========================
     try:
         service = get_google_service()
-
         service.permissions().create(
             fileId=GOOGLE_SHEETS_ID,
-            body={
-                "type": "user",
-                "role": "reader",
-                "emailAddress": email
-            },
+            body={"type": "user", "role": "reader", "emailAddress": email},
             sendNotificationEmail=True
         ).execute()
-
         results.append("✅ Доступ к таблице выдан.")
-
     except Exception as e:
         error_text = str(e)
-
         if "already" in error_text.lower():
             results.append("⚠️ Доступ к таблице уже был выдан.")
         elif "File not found" in error_text:
@@ -966,18 +823,11 @@ async def grant_access(interaction: discord.Interaction, email: str):
         else:
             results.append(f"❌ Ошибка таблицы: `{error_text[:150]}`")
 
-    # =========================
-    # GOOGLE FORM
-    # =========================
     try:
         service = get_google_service()
-
         form_id = os.getenv("GOOGLE_FORM_ID", "").strip()
-
-        # Если указана ссылка вместо ID
         if "/d/" in form_id:
             form_id = form_id.split("/d/")[1].split("/")[0]
-
         elif "/e/" in form_id:
             form_id = form_id.split("/e/")[1].split("/")[0]
 
@@ -986,19 +836,12 @@ async def grant_access(interaction: discord.Interaction, email: str):
         else:
             service.permissions().create(
                 fileId=form_id,
-                body={
-                    "type": "user",
-                    "role": "reader",
-                    "emailAddress": email
-                },
+                body={"type": "user", "role": "reader", "emailAddress": email},
                 sendNotificationEmail=True
             ).execute()
-
             results.append("✅ Доступ к отчетам выдан.")
-
     except Exception as e:
         error_text = str(e)
-
         if "already" in error_text.lower():
             results.append("⚠️ Доступ к форме уже был выдан.")
         elif "File not found" in error_text:
@@ -1006,33 +849,15 @@ async def grant_access(interaction: discord.Interaction, email: str):
         else:
             results.append(f"❌ Ошибка формы: `{error_text[:150]}`")
 
-    # =========================
-    # РЕЗУЛЬТАТ
-    # =========================
-
     has_error = any(result.startswith("❌") for result in results)
-
     embed = discord.Embed(
         title="🔑 Выдача доступа",
         color=discord.Color.red() if has_error else discord.Color.green(),
         timestamp=datetime.datetime.now()
     )
-
-    embed.add_field(
-        name="📧 Email",
-        value=f"`{email}`",
-        inline=False
-    )
-
-    embed.add_field(
-        name="📋 Результат",
-        value="\n".join(results),
-        inline=False
-    )
-
-    embed.set_footer(
-        text=f"Выдал: {interaction.user.display_name}"
-    )
+    embed.add_field(name="📧 Email", value=f"`{email}`", inline=False)
+    embed.add_field(name="📋 Результат", value="\n".join(results), inline=False)
+    embed.set_footer(text=f"Выдал: {interaction.user.display_name}")
 
     await interaction.followup.send(embed=embed)
 
@@ -1089,7 +914,7 @@ https://docs.google.com/spreadsheets/d/1-3ER99-RpUkPdeRE4JC5s0KRnV1unqNnmNQhtf4J
         save_staff()
     except Exception as e:
         print(f"Ошибка обновления состава: {e}")
-        
+
 # ===== ОБРАБОТКА СООБЩЕНИЙ В КАНАЛЕ УЧЁТА =====
 
 def parse_line(line):
