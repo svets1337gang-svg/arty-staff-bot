@@ -717,103 +717,121 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         print(f"❌ Ошибка в отгул: {e}")
         await interaction.followup.send(f"❌ Ошибка: {e}")
 
-# 14. /выдатьдоступ
-@bot.tree.command(name="выдатьдоступ", description="Выдать доступ к таблице (Читатель) и форме (Респондент) по email")
+@bot.tree.command(
+    name="выдатьдоступ",
+    description="Выдать доступ к таблице (Читатель) и форме (Респондент) по email"
+)
 @app_commands.describe(email="Email пользователя")
 @has_staff_role_check()
 async def grant_access(interaction: discord.Interaction, email: str):
+    await interaction.response.defer(ephemeral=True)
+
+    email = email.strip().lower()
+
+    # Проверка email
+    if not email or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        await interaction.followup.send("❌ Укажите корректный email.")
+        return
+
+    results = []
+
+    # =========================
+    # GOOGLE SHEETS
+    # =========================
     try:
-        await interaction.response.defer(thinking=True)
+        service = get_google_service()
 
-        email = email.strip().lower()
-        if not email or not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-            await interaction.followup.send("❌ Укажите корректный email.")
-            return
-
-        # credentials.json должен содержать service-account Google.
-        creds = Credentials.from_service_account_file("credentials.json")
-        drive_service = build("drive", "v3", credentials=creds)
-
-        results = []
-
-        # Доступ к Google Таблице — Читатель.
-        try:
-            permission = {
+        service.permissions().create(
+            fileId=GOOGLE_SHEETS_ID,
+            body={
                 "type": "user",
                 "role": "reader",
                 "emailAddress": email
-            }
+            },
+            sendNotificationEmail=True
+        ).execute()
 
-            drive_service.permissions().create(
-                fileId=GOOGLE_SHEETS_ID,
-                body=permission,
-                sendNotificationEmail=False
-            ).execute()
+        results.append("✅ Доступ к таблице (Читатель) выдан.")
 
-            results.append("✅ Доступ к таблице (Читатель) выдан.")
-        except Exception as e:
-            error_text = str(e)
-            if "already exists" in error_text.lower():
-                results.append("⚠️ Доступ к таблице уже есть.")
-            else:
-                results.append(f"❌ Ошибка при выдаче доступа к таблице: {error_text}")
+    except Exception as e:
+        error_text = str(e)
 
-        # Доступ к Google Форме — Респондент (view='published').
-        try:
-            form_id = os.getenv("GOOGLE_FORM_ID", "").strip()
+        if "already" in error_text.lower():
+            results.append("⚠️ Доступ к таблице уже был выдан.")
+        elif "File not found" in error_text:
+            results.append("❌ Таблица не найдена.")
+        else:
+            results.append(f"❌ Ошибка таблицы: `{error_text[:150]}`")
 
-            if not form_id:
-                results.append("⚠️ ID формы не указан в .env")
-            else:
-                # Если в .env указана ссылка, извлекаем ID.
-                if "/d/" in form_id:
-                    form_id = form_id.split("/d/", 1)[1].split("/", 1)[0]
-                elif "/e/" in form_id:
-                    form_id = form_id.split("/e/", 1)[1].split("/", 1)[0]
+    # =========================
+    # GOOGLE FORM
+    # =========================
+    try:
+        service = get_google_service()
 
-                permission_form = {
+        form_id = os.getenv("GOOGLE_FORM_ID", "").strip()
+
+        # Если указана ссылка вместо ID
+        if "/d/" in form_id:
+            form_id = form_id.split("/d/")[1].split("/")[0]
+
+        elif "/e/" in form_id:
+            form_id = form_id.split("/e/")[1].split("/")[0]
+
+        if not form_id:
+            results.append("❌ GOOGLE_FORM_ID не указан в .env")
+        else:
+            service.permissions().create(
+                fileId=form_id,
+                body={
                     "type": "user",
                     "role": "reader",
-                    "emailAddress": email,
-                    "view": "published"
-                }
+                    "emailAddress": email
+                },
+                sendNotificationEmail=True
+            ).execute()
 
-                drive_service.permissions().create(
-                    fileId=form_id,
-                    body=permission_form,
-                    sendNotificationEmail=False
-                ).execute()
+            results.append("✅ Доступ к форме (Респондент) выдан.")
 
-                results.append("✅ Доступ к форме (Респондент) выдан.")
-        except Exception as e:
-            error_text = str(e)
-            if "already exists" in error_text.lower():
-                results.append("⚠️ Доступ к форме уже есть.")
-            elif "File not found" in error_text or "notFound" in error_text:
-                results.append("❌ Форма не найдена. Проверьте GOOGLE_FORM_ID.")
-            else:
-                results.append(f"❌ Ошибка при выдаче доступа к форме: {error_text}")
-
-        has_error = any(result.startswith("❌") for result in results)
-        embed = discord.Embed(
-            title="🔑 Выдача доступа",
-            color=discord.Color.red() if has_error else discord.Color.green(),
-            timestamp=datetime.datetime.now()
-        )
-        embed.add_field(name="Email", value=email, inline=False)
-        embed.add_field(name="Результат", value="\\n".join(results), inline=False)
-        embed.set_footer(text=f"Выдал: {interaction.user.display_name}")
-
-        await interaction.followup.send(embed=embed)
-
-    except discord.errors.NotFound:
-        print("⚠️ Взаимодействие в выдатьдоступ истекло")
     except Exception as e:
-        print(f"❌ Ошибка в выдатьдоступ: {e}")
-        try:
-            await interaction.followup.send(f"❌ Ошибка: {e}")
-        except discord.errors.NotFound:
-            pass
+        error_text = str(e)
+
+        if "already" in error_text.lower():
+            results.append("⚠️ Доступ к форме уже был выдан.")
+        elif "File not found" in error_text:
+            results.append("❌ Форма не найдена.")
+        else:
+            results.append(f"❌ Ошибка формы: `{error_text[:150]}`")
+
+    # =========================
+    # РЕЗУЛЬТАТ
+    # =========================
+
+    has_error = any(result.startswith("❌") for result in results)
+
+    embed = discord.Embed(
+        title="🔑 Выдача доступа",
+        color=discord.Color.red() if has_error else discord.Color.green(),
+        timestamp=datetime.datetime.now()
+    )
+
+    embed.add_field(
+        name="📧 Email",
+        value=f"`{email}`",
+        inline=False
+    )
+
+    embed.add_field(
+        name="📋 Результат",
+        value="\n".join(results),
+        inline=False
+    )
+
+    embed.set_footer(
+        text=f"Выдал: {interaction.user.display_name}"
+    )
+
+    await interaction.followup.send(embed=embed)
 
 # 15. /sync
 @bot.tree.command(name="sync", description="Принудительно синхронизировать команды (только для админов)")
