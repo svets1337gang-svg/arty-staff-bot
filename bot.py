@@ -799,7 +799,8 @@ https://docs.google.com/spreadsheets/d/1-3ER99-RpUkPdeRE4JC5s0KRnV1unqNnmNQhtf4J
         else:
             async for msg in channel.history(limit=100):
                 if msg.author == bot.user and msg.content.startswith('📋 СОСТАВ FT'):
-                    staff_message_id = msg.id                    await msg.edit(content=content)
+                    staff_message_id = msg.id
+                    await msg.edit(content=content)
                     return
             msg = await channel.send(content)
             staff_message_id = msg.id
