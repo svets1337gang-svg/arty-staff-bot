@@ -717,6 +717,7 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         print(f"❌ Ошибка в отгул: {e}")
         await interaction.followup.send(f"❌ Ошибка: {e}")
 
+# 14. /выдатьдоступ
 @bot.tree.command(
     name="выдатьдоступ",
     description="Выдать доступ к таблице (Читатель) и форме (Респондент) по email"
@@ -751,7 +752,7 @@ async def grant_access(interaction: discord.Interaction, email: str):
             sendNotificationEmail=True
         ).execute()
 
-        results.append("✅ Доступ к таблице (Читатель) выдан.")
+        results.append("✅ Доступ к таблице выдан.")
 
     except Exception as e:
         error_text = str(e)
@@ -791,7 +792,7 @@ async def grant_access(interaction: discord.Interaction, email: str):
                 sendNotificationEmail=True
             ).execute()
 
-            results.append("✅ Доступ к форме (Респондент) выдан.")
+            results.append("✅ Доступ к отчетам выдан.")
 
     except Exception as e:
         error_text = str(e)
