@@ -210,17 +210,37 @@ class SheetsManager:
     # ИЗМЕНЕНИЕ ТАБЛИЦЫ
     # =========================================================
 
-    def update_user(
-        self,
-        row,
-        column,
-        value
-    ):
-        self.sheet.update_cell(
-            row,
-            column,
-            value
-        )
+def update_user(self, row, column, value):
+    try:
+        print(f"🟢🟢🟢 update_user вызван!")
+        print(f"   - row: {row}")
+        print(f"   - column: {column}")
+        print(f"   - value: {value}")
+        
+        # Проверяем, что row и column - числа
+        if not isinstance(row, int):
+            print(f"❌ row не число! Это {type(row)}")
+            return
+        
+        if not isinstance(column, int):
+            print(f"❌ column не число! Это {type(column)}")
+            return
+        
+        # Показываем текущее значение ДО обновления
+        old_value = self.sheet.cell(row, column).value
+        print(f"   - старое значение: {old_value}")
+        
+        # Обновляем
+        self.sheet.update_cell(row, column, value)
+        
+        # Проверяем, что обновилось
+        new_value = self.sheet.cell(row, column).value
+        print(f"   - новое значение: {new_value}")
+        print(f"🟢🟢🟢 update_user завершён")
+        
+    except Exception as e:
+        print(f"❌❌❌ update_user ОШИБКА: {e}")
+        raise
 
 
     def add_user(
