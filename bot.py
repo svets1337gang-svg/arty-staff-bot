@@ -594,39 +594,62 @@ async def refresh_staff(interaction: discord.Interaction):
 async def help_command(interaction: discord.Interaction):
     try:
         embed = discord.Embed(
-            title="🤖 ArtyStaff Bot",
-            description="Бот для автоматизации управления персоналом FT",
-            color=discord.Color.blue()
+            title="✨ ArtyStaff Bot",
+            description="**Управление персоналом FT** — просто, быстро, удобно.",
+            color=discord.Color.blue(),
+            timestamp=datetime.datetime.now()
         )
+        embed.set_thumbnail(url=bot.user.avatar.url if bot.user.avatar else None)
+        
         embed.add_field(
-            name="📊 Статистика",
-            value="`/stat @ник` - Показать статистику игрока",
+            name="⚠️ Важно!",
+            value=(
+                "**Все команды, кроме `/stat`, писать ТОЛЬКО в этом канале!**\n"
+            ),
             inline=False
         )
+        
+        embed.add_field(
+            name="📊 Статистика",
+            value="`/stat @ник` — Показать статистику игрока\n*(работает в любом канале)*",
+            inline=False
+        )
+        
         embed.add_field(
             name="⚖️ Наказания",
             value=(
-                "`/варн @ник причина [кол-во]` - Выдать варн(ы)\n"
-                "`/устник @ник причина [кол-во]` - Выдать устник(и)\n"
-                "`/снятьварн @ник` - Снять варн за 100 баллов\n"
-                "`/снятьустник @ник` - Снять устник за 50 баллов"
+                "`/варн @ник причина [кол-во]` — Выдать варн(ы)\n"
+                "`/устник @ник причина [кол-во]` — Выдать устник(и)\n"
+                "`/снятьварн @ник` — Снять варн за 100 баллов\n"
+                "`/снятьустник @ник` — Снять устник за 50 баллов"
             ),
             inline=False
         )
+        
         embed.add_field(
             name="👥 Управление составом",
             value=(
-                "`/принять @ник должность` - Принять нового сотрудника\n"
-                "`/снять @ник причина` - Снять сотрудника\n"
-                "`/повысить ник должность` - Повысить сотрудника\n"
-                "`/добавитьсостав ник должность` - Добавить в состав (без уведомлений)\n"
-                "`/удалитьсостав ник` - Удалить из состава (роли НЕ снимаются)\n"
-                "`/обновитьсостав` - Обновить сообщение с составом"
+                "`/принять @ник должность` — Принять нового сотрудника\n"
+                "`/снять @ник причина` — Снять сотрудника\n"
+                "`/повысить ник должность` — Повысить сотрудника\n"
+                "`/добавитьсостав ник должность` — Добавить в состав (без уведомлений)\n"
+                "`/удалитьсостав ник` — Удалить из состава (роли НЕ снимаются)\n"
+                "`/обновитьсостав` — Обновить сообщение с составом"
             ),
             inline=False
         )
+        
         embed.add_field(
-            name="📌 Доступ к командам",
+            name="📅 Отгулы и баллы",
+            value=(
+                "`/отгул @ник дата` — Оформить отгул\n"
+                "Списание **40 баллов** за отгул"
+            ),
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🎯 Доступ к командам",
             value=(
                 "**Обзванивающий:** `/принять` (только Стажер и Мл. Поддержка)\n"
                 "**Зам. Куратора+:** Все команды управления составом\n"
@@ -634,15 +657,27 @@ async def help_command(interaction: discord.Interaction):
             ),
             inline=False
         )
+        
         embed.add_field(
-            name="📋 Система баллов",
+            name="💎 Система баллов",
             value=(
-                "Снятие устника - **50 баллов**\n"
-                "Снятие варна - **100 баллов**"
+                "Снятие устника — **50 баллов**\n"
+                "Снятие варна — **100 баллов**\n"
+                "Отгул — **40 баллов**"
             ),
             inline=False
         )
-        embed.set_footer(text="ArtyStaff Bot | ArtyGrief")
+        
+        embed.add_field(
+            name="❓ Помощь",
+            value="`/help` — Показать это сообщение",
+            inline=False
+        )
+        
+        embed.set_footer(
+            text="ArtyStaff Bot | ArtyGrief",
+            icon_url=interaction.guild.icon.url if interaction.guild.icon else None
+        )
         
         await interaction.response.send_message(embed=embed)
         
@@ -734,21 +769,12 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         
         sheets.update_user(row, points_col, str(new_points))
         
-        # Отправляем уведомление
-        channel = bot.get_channel(CHANNELS['наказания'])
-        embed = discord.Embed(
-            title="📅 Оформлен отгул",
-            color=discord.Color.orange(),
-            timestamp=datetime.datetime.now()
-        )
-        embed.add_field(name="Игрок", value=user.mention, inline=True)
-        embed.add_field(name="Дата", value=date, inline=True)
-        embed.add_field(name="Списано баллов", value="40", inline=True)
-        embed.add_field(name="Остаток баллов", value=str(new_points), inline=True)
-        embed.add_field(name="Выдал", value=interaction.user.mention, inline=True)
-        embed.set_footer(text=f"ID: {user.id}")
-        if channel:
-            await channel.send(embed=embed)
+        # =========================================================
+        # ❌ УБРАНО УВЕДОМЛЕНИЕ В КАНАЛ НАКАЗАНИЙ
+        # =========================================================
+        # channel = bot.get_channel(CHANNELS['наказания'])
+        # embed = discord.Embed(...)
+        # await channel.send(embed=embed)
         
         await interaction.followup.send(
             f"✅ Отгул оформлен {user.mention} на {date}\n"
@@ -760,7 +786,7 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
     except Exception as e:
         print(f"❌ Ошибка в отгул: {e}")
         await interaction.followup.send(f"❌ Ошибка: {e}")
-
+        
 # ============ АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ СОСТАВА ============
 
 async def update_staff_message():
