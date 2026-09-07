@@ -556,6 +556,65 @@ class SheetsManager:
             return None
 
 
+    def find_column_by_date_for_user(self, row: int, date_str: str) -> int:
+        """
+        Находит колонку с указанной датой для конкретного сотрудника.
+        Дата ищется в строке 15 (для сотрудников до 60 строки) 
+        или в строке 60 (для стажеров).
+        """
+        try:
+            if not date_str:
+                return None
+
+            date_str = date_str.strip()
+
+            # Определяем, в каком блоке находится сотрудник
+            if row < 60:
+                # Блок 1: даты в строке 15
+                header_row_num = 15
+                print(f"🔍 Сотрудник в блоке 1 (строка {row}), даты в строке {header_row_num}")
+            else:
+                # Блок 2: даты в строке 60
+                header_row_num = 60
+                print(f"🔍 Сотрудник в блоке 2 (строка {row}), даты в строке {header_row_num}")
+
+            # Получаем строку с датами
+            header_row = self.sheet.row_values(header_row_num)
+
+            print(f"🔍 Ищем дату: '{date_str}'")
+            print(f"📋 Заголовки (первые 10): {header_row[:10]}...")
+
+            # Ищем дату в заголовках
+            for col_idx, value in enumerate(header_row, start=1):
+                if not value:
+                    continue
+
+                value_str = str(value).strip()
+
+                # Проверяем разные форматы
+                # 1. Точное совпадение
+                if date_str == value_str:
+                    print(f"✅ Найдено точное совпадение: колонка {col_idx}")
+                    return col_idx
+
+                # 2. Вхождение (например, '12.09' в '12.09.2026')
+                if date_str in value_str:
+                    print(f"✅ Найдено вхождение: колонка {col_idx} ('{value_str}')")
+                    return col_idx
+
+                # 3. Без точки
+                if date_str.replace('.', '') == value_str.replace('.', '').replace('/', ''):
+                    print(f"✅ Найдено совпадение без точки: колонка {col_idx}")
+                    return col_idx
+
+            print(f"❌ Дата '{date_str}' не найдена в строке {header_row_num}")
+            return None
+
+        except Exception as e:
+            print(f"❌ Ошибка поиска даты: {e}")
+            return None
+
+
     def copy_cell_style_with_value(
         self,
         source_row: int,
