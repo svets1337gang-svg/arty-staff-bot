@@ -111,12 +111,16 @@ async def on_ready():
     print(f'📋 Загружено {len(staff_list)} сотрудников в составе')
 
     try:
+        # ID вашего сервера
         guild_id = 1247251922579099719
         guild = discord.Object(id=guild_id)
 
+        # Пытаемся синхронизировать команды с сервером
         synced = await bot.tree.sync(guild=guild)
 
         print(f'✅ Синхронизировано команд на сервере: {len(synced)}')
+        for cmd in synced:
+            print(f'   - /{cmd.name}')
         print('📋 Команды синхронизированы на сервере')
     except Exception as e:
         print(f'❌ Ошибка синхронизации команд: {e}')
