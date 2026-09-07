@@ -457,13 +457,16 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
     try:
         await interaction.response.defer(thinking=True)
         
+        # Проверяем, существует ли должность
         if position not in ALL_POSITIONS:
             positions_list = "\n".join(ALL_POSITIONS)
             await interaction.followup.send(f"❌ Должность '{position}' не найдена.\nДоступные должности:\n{positions_list}")
             return
         
+        # Получаем роли пользователя
         user_roles = [role.id for role in interaction.user.roles]
         
+        # Проверяем, есть ли у пользователя доступ к команде (Обзванивающий или Зам. Куратора+)
         has_accept_permission = any(role in ACCEPT_ROLES for role in user_roles)
         if not has_accept_permission:
             await interaction.followup.send(
@@ -472,8 +475,10 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
             )
             return
         
+        # Проверяем, есть ли у пользователя полный доступ (Зам. Куратора+)
         has_full_access = any(role in STAFF_ROLES for role in user_roles)
         
+        # Ограничения для обзванивающих
         allowed_positions = ['Стажер', 'Мл. Поддержка']
         if not has_full_access and position not in allowed_positions:
             await interaction.followup.send(
@@ -483,25 +488,44 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
             )
             return
         
+        # Проверяем, есть ли уже в составе
         clean_nick = normalize_nick(user.display_name)
         existing = next((m for m in staff_list if m['nick'] == clean_nick), None)
         if existing:
             await interaction.followup.send(f"❌ {user.mention} уже есть в составе.")
             return
         
+        # Добавляем в состав
         staff_list.append({'nick': clean_nick, 'position': position})
         save_staff()
         
+        # ===== ВЫДАЁМ РОЛИ =====
+        
+        # 1. Должностная роль
         role_id = POSITION_TO_ROLE.get(position)
         if role_id:
             role = interaction.guild.get_role(role_id)
             if role:
                 await user.add_roles(role)
+                print(f"✅ Выдана роль: {role.name}")
         
+        # 2. Основная КП-роль
         staff_role = interaction.guild.get_role(ROLES['STAFF_FT'])
         if staff_role:
             await user.add_roles(staff_role)
+            print(f"✅ Выдана роль: {staff_role.name}")
         
+        # 3. 🆕 СНИМАЕМ роль "Обзвон FT" (если есть)
+        obzvon_role = interaction.guild.get_role(1366434300970532955)
+        if obzvon_role and obzvon_role in user.roles:
+            await user.remove_roles(obzvon_role)
+            print(f"✅ Снята роль Обзвон FT с {user.display_name}")
+        elif obzvon_role:
+            print(f"ℹ️ Роль Обзвон FT отсутствует у {user.display_name}, снимать нечего")
+        else:
+            print(f"⚠️ Роль Обзвон FT (1366434300970532955) не найдена на сервере!")
+        
+        # ===== 1. УВЕДОМЛЕНИЕ В КАНАЛ УЧЁТА =====
         channel = bot.get_channel(CHANNELS['учет_принятых_повышенных'])
         if channel:
             if position == 'Стажер':
@@ -522,12 +546,13 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
             embed.add_field(name="4. Кто провел обзвон", value=interaction.user.mention, inline=False)
             await channel.send(embed=embed)
         
+        # ===== 2. ПРИВЕТСТВИЕ В ОБЫЧНЫЙ ЧАТ (ID: 1297555288790011977) =====
         try:
             welcome_channel = bot.get_channel(1297555288790011977)
             if welcome_channel:
                 welcome_message = (
                     f"{user.mention}, добро пожаловать! 🎉\n"
-                    f"Скинь свою почту <@&1327267237777768532> или <@&1311678066845679616>."
+                    f"Скинь свою почту Зам. Куратору или Куратору"
                 )
                 await welcome_channel.send(welcome_message)
                 print(f"✅ Приветствие отправлено в канал {welcome_channel.name}")
@@ -536,6 +561,7 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
         except Exception as e:
             print(f"❌ Ошибка при отправке приветствия: {e}")
         
+        # Обновляем состав
         await update_staff_message()
         await interaction.followup.send(f"✅ {user.mention} принят на должность {position}")
         
@@ -544,7 +570,6 @@ async def accept_staff(interaction: discord.Interaction, user: discord.Member, p
     except Exception as e:
         print(f"❌ Ошибка в принять: {e}")
         await interaction.followup.send(f"❌ Ошибка: {e}")
-
 # 9. /удалитьсостав
 @bot.tree.command(name="удалитьсостав", description="Удалить сотрудника из состава вручную (роли НЕ снимаются)")
 @app_commands.describe(nick="Ник сотрудника (без @)")
