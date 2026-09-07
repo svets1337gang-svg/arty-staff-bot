@@ -25,6 +25,15 @@ bot = commands.Bot(command_prefix='/', intents=intents)
 # Инициализация Google Sheets (только для наказаний и статистики)
 sheets = SheetsManager()
 
+def get_google_service():
+    """Создаёт и возвращает Google Drive сервис"""
+    try:
+        creds = Credentials.from_service_account_file('credentials.json')
+        return build('drive', 'v3', credentials=creds)
+    except Exception as e:
+        print(f"❌ Ошибка создания Google сервиса: {e}")
+        return None
+        
 # ===== ФУНКЦИЯ НОРМАЛИЗАЦИИ НИКА =====
 def normalize_nick(nick: str) -> str:
     """Очищает ник от приписок типа [x901-101], (x901), {x901} и т.д."""
