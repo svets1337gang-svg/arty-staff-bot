@@ -371,11 +371,15 @@ async def remove_user(interaction, user: discord.Member, reason: str):
 # 7. /повысить
 @bot.tree.command(name="повысить", description="Повысить сотрудника")
 @app_commands.describe(
-    user="Discord ID, упоминание или ник сотрудника",
-    new_position="Новая должность"
+    user="Игрок",
+    new_position="Должность, на которую повысить"
 )
 @has_staff_role_check()
-async def promote(interaction: discord.Interaction, user: str, new_position: str):
+async def promote(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    new_position: str
+):
     try:
         await interaction.response.defer(thinking=True)
 
@@ -388,46 +392,10 @@ async def promote(interaction: discord.Interaction, user: str, new_position: str
             )
             return
 
-        # ==========================================
-        # 1. Ищем пользователя по Discord ID / упоминанию / нику
-        # ==========================================
-        member = None
+        # Берём ник именно из тегнутого Discord-пользователя
+        clean_nick = normalize_nick(user.display_name)
 
-        # Упоминание <@123456789> или <@!123456789>
-        mention_match = re.fullmatch(r"<@!?(\d+)>", user.strip())
-
-        if mention_match:
-            discord_id = int(mention_match.group(1))
-            member = interaction.guild.get_member(discord_id)
-
-        # Просто Discord ID
-        elif user.strip().isdigit():
-            discord_id = int(user.strip())
-            member = interaction.guild.get_member(discord_id)
-
-        # Если не нашли по ID, ищем по нику
-        if not member:
-            clean_nick = normalize_nick(user.strip())
-
-            member = next(
-                (
-                    m for m in interaction.guild.members
-                    if normalize_nick(m.display_name).lower() == clean_nick.lower()
-                ),
-                None
-            )
-
-        if not member:
-            await interaction.followup.send(
-                f"❌ Пользователь `{user}` не найден на сервере."
-            )
-            return
-
-        # ==========================================
-        # 2. Ищем сотрудника в составе
-        # ==========================================
-        clean_nick = normalize_nick(member.display_name)
-
+        # Ищем сотрудника в составе
         existing = next(
             (
                 m for m in staff_list
@@ -438,60 +406,43 @@ async def promote(interaction: discord.Interaction, user: str, new_position: str
 
         if not existing:
             await interaction.followup.send(
-                f"❌ {member.mention} не найден в составе."
+                f"❌ Пользователь {user.mention} не найден в составе.\n"
+                f"Ник: `{clean_nick}`"
             )
             return
 
-        # ==========================================
-        # 3. Проверяем текущую должность
-        # ==========================================
         old_position = existing['position']
 
         if old_position == new_position:
             await interaction.followup.send(
-                f"❌ У {member.mention} уже стоит должность `{new_position}`."
+                f"❌ У {user.mention} уже стоит должность `{new_position}`."
             )
             return
 
-        # ==========================================
-        # 4. Меняем должность в составе
-        # ==========================================
+        # Меняем должность в составе
         existing['position'] = new_position
         save_staff()
 
-        # ==========================================
-        # 5. Снимаем старую роль
-        # ==========================================
+        # Снимаем старую роль
         old_role_id = POSITION_TO_ROLE.get(old_position)
-
         if old_role_id:
             old_role = interaction.guild.get_role(old_role_id)
+            if old_role and old_role in user.roles:
+                await user.remove_roles(old_role)
 
-            if old_role and old_role in member.roles:
-                await member.remove_roles(old_role)
-
-        # ==========================================
-        # 6. Выдаём новую роль
-        # ==========================================
+        # Выдаём новую роль
         new_role_id = POSITION_TO_ROLE.get(new_position)
-
         if new_role_id:
             new_role = interaction.guild.get_role(new_role_id)
-
             if new_role:
-                await member.add_roles(new_role)
+                await user.add_roles(new_role)
 
-        # ==========================================
-        # 7. Снимаем роль "Обзвон FT"
-        # ==========================================
+        # Снимаем Обзвон FT
         obzvon_role = interaction.guild.get_role(1366434300970532955)
+        if obzvon_role and obzvon_role in user.roles:
+            await user.remove_roles(obzvon_role)
 
-        if obzvon_role and obzvon_role in member.roles:
-            await member.remove_roles(obzvon_role)
-
-        # ==========================================
-        # 8. Лог повышения
-        # ==========================================
+        # Лог повышения
         channel = bot.get_channel(CHANNELS['учет_принятых_повышенных'])
 
         embed = discord.Embed(
@@ -502,30 +453,21 @@ async def promote(interaction: discord.Interaction, user: str, new_position: str
 
         embed.add_field(
             name="1. Пинг сотрудника",
-            value=member.mention,
+            value=user.mention,
             inline=False
         )
-
         embed.add_field(
-            name="2. Discord ID",
-            value=f"`{member.id}`",
-            inline=False
-        )
-
-        embed.add_field(
-            name="3. Ник",
+            name="2. Ник",
             value=clean_nick,
             inline=False
         )
-
         embed.add_field(
-            name="4. Повышен на должность",
+            name="3. Повышен на должность",
             value=f"[{new_position}]",
             inline=False
         )
-
         embed.add_field(
-            name="5. Кто повысил",
+            name="4. Кто повысил",
             value=interaction.user.mention,
             inline=False
         )
@@ -537,13 +479,11 @@ async def promote(interaction: discord.Interaction, user: str, new_position: str
         if channel:
             await channel.send(embed=embed)
 
-        # ==========================================
-        # 9. Обновляем сообщение состава
-        # ==========================================
+        # Обновляем состав
         await update_staff_message()
 
         await interaction.followup.send(
-            f"✅ {member.mention} повышен с **{old_position}** "
+            f"✅ {user.mention} повышен с **{old_position}** "
             f"до **{new_position}**."
         )
 
@@ -552,9 +492,7 @@ async def promote(interaction: discord.Interaction, user: str, new_position: str
 
     except Exception as e:
         print(f"❌ Ошибка в повысить: {e}")
-        await interaction.followup.send(
-            f"❌ Ошибка: {e}"
-        )
+        await interaction.followup.send(f"❌ Ошибка: {e}")
 
 # 8. /принять
 @bot.tree.command(name="принять", description="Принять нового сотрудника в состав")
