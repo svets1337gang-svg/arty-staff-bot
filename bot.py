@@ -705,7 +705,8 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
             return
 
         points_raw = user_data.get('points', '0')
-        current_points = sheets.parse_points(points_raw)
+        # ===== ИСПРАВЛЕНО: используем функцию parse_points, а не метод =====
+        current_points = parse_points(points_raw)
 
         COST = 100
 
@@ -757,13 +758,13 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
         await asyncio.sleep(0.5)
 
         updated_user_data = sheets.get_user_data(row)
-        saved_points = sheets.parse_points(updated_user_data.get('points', '0'))
+        saved_points = parse_points(updated_user_data.get('points', '0'))
 
         if saved_points != new_points:
             sheets.update_user(row, 3, str(new_points))
             await asyncio.sleep(0.5)
             updated_user_data = sheets.get_user_data(row)
-            saved_points = sheets.parse_points(updated_user_data.get('points', '0'))
+            saved_points = parse_points(updated_user_data.get('points', '0'))
 
             if saved_points != new_points:
                 await interaction.followup.send(
