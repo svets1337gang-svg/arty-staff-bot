@@ -871,7 +871,7 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
 @app_commands.describe(email="Email пользователя")
 @has_staff_role_check()
 async def grant_access(interaction: discord.Interaction, email: str):
-    await interaction.response.defer(ephemeral=True)
+    await interaction.response.defer(ephemeral=False)
 
     email = email.strip().lower()
 
