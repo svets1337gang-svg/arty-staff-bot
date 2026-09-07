@@ -7,6 +7,7 @@ load_dotenv()
 DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 GOOGLE_SHEETS_ID = os.getenv('GOOGLE_SHEETS_ID')
 SHEET_NAME = os.getenv('SHEET_NAME')
+GOOGLE_FORM_ID = os.getenv('GOOGLE_FORM_ID')
 
 # ===== ID КАНАЛОВ =====
 CHANNELS = {
