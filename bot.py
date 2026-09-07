@@ -680,37 +680,55 @@ async def add_staff_manual(interaction: discord.Interaction, nick: str, position
 async def take_off(interaction: discord.Interaction, user: discord.Member, date: str):
     try:
         await interaction.response.defer(thinking=True)
+        
         clean_nick = normalize_nick(user.display_name)
         user_data = sheets.find_user_by_nick(clean_nick)
+        
         if not user_data:
             await interaction.followup.send(f"❌ Пользователь {user.mention} не найден в таблице.")
             return
+        
         row = user_data['row']
+        
+        # Находим колонку с датой (с учетом блока сотрудника)
         date_col = sheets.find_column_by_date_for_user(row, date)
+        
         if not date_col:
             await interaction.followup.send(f"❌ Дата {date} не найдена в таблице.")
             return
+        
+        # Копируем значение и стиль из B80
         source_row = 80
-        source_col = 2
+        source_col = 2  # B
+        
         target_row = row
         target_col = date_col
+        
         copy_success = sheets.copy_cell_style_with_value(
             source_row, source_col,
             target_row, target_col
         )
+        
         if not copy_success:
             await interaction.followup.send("❌ Ошибка при копировании отгула.")
             return
+        
+        # ===== СНИМАЕМ БАЛЛЫ (100) =====
         points_col = 3
         current_points = int(user_data['points']) if user_data['points'].isdigit() else 0
-        new_points = current_points - 100
+        new_points = current_points - 100  # ← СТОИМОСТЬ ОТГУЛА 100 БАЛЛОВ
+        
         if new_points < 0:
             new_points = 0
+        
         sheets.update_user(row, points_col, str(new_points))
+        
+        # Отправляем ответ
         await interaction.followup.send(
             f"✅ Отгул оформлен {user.mention} на {date}\n"
-            f"Списано 40 баллов. Остаток: {new_points}"
+            f"Списано 100 баллов. Остаток: {new_points}"
         )
+        
     except discord.errors.NotFound:
         print("⚠️ Взаимодействие для отгул истекло")
     except Exception as e:
