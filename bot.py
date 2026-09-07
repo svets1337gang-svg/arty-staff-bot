@@ -13,7 +13,7 @@ from googleapiclient.discovery import build
 from config import (
     DISCORD_TOKEN, CHANNELS, ROLES, ROLES_TO_REMOVE,
     STAT_ROLES, STAFF_ROLES, ACCEPT_ROLES, POSITION_TO_ROLE, ALL_POSITIONS,
-    POSITION_ORDER
+    POSITION_ORDER, GOOGLE_SHEETS_ID
 )
 from sheets import SheetsManager
 
@@ -416,6 +416,8 @@ async def promote(interaction: discord.Interaction, nick: str, new_position: str
     user="Игрок",
     position="Должность (Стажер или Мл. Поддержка для обзванивающих, остальные - только для зам. куратора+)"
 )
+# /принять сохраняет отдельную проверку ACCEPT_ROLES, потому что команда доступна
+# не только STAFF_ROLES, но и роли обзванивающих.
 async def accept_staff(interaction: discord.Interaction, user: discord.Member, position: str):
     try:
         await interaction.response.defer(thinking=True)
@@ -712,92 +714,121 @@ async def take_off(interaction: discord.Interaction, user: discord.Member, date:
 async def grant_access(interaction: discord.Interaction, email: str):
     try:
         await interaction.response.defer(thinking=True)
+
         email = email.strip().lower()
-        if not email or '@' not in email:
+        if not email or not re.fullmatch(r"[^@\\s]+@[^@\\s]+\\.[^@\\s]+", email):
             await interaction.followup.send("❌ Укажите корректный email.")
             return
-        creds = Credentials.from_service_account_file('credentials.json')
-        drive_service = build('drive', 'v3', credentials=creds)
+
+        # credentials.json должен содержать service-account Google.
+        creds = Credentials.from_service_account_file("credentials.json")
+        drive_service = build("drive", "v3", credentials=creds)
+
         results = []
-        # Доступ к таблице (Читатель)
+
+        # Доступ к Google Таблице — Читатель.
         try:
             permission = {
-                'type': 'user',
-                'role': 'reader',
-                'emailAddress': email
+                "type": "user",
+                "role": "reader",
+                "emailAddress": email
             }
+
             drive_service.permissions().create(
                 fileId=GOOGLE_SHEETS_ID,
                 body=permission,
                 sendNotificationEmail=False
             ).execute()
+
             results.append("✅ Доступ к таблице (Читатель) выдан.")
         except Exception as e:
-            if 'already exists' in str(e).lower():
+            error_text = str(e)
+            if "already exists" in error_text.lower():
                 results.append("⚠️ Доступ к таблице уже есть.")
             else:
-                results.append(f"❌ Ошибка при выдаче доступа к таблице: {str(e)}")
-        # Доступ к форме (Респондент)
+                results.append(f"❌ Ошибка при выдаче доступа к таблице: {error_text}")
+
+        # Доступ к Google Форме — Респондент (view='published').
         try:
-            form_id = os.getenv('GOOGLE_FORM_ID')
-            if form_id:
-                if '/e/' in form_id:
-                    form_id = form_id.split('/e/')[-1].split('/')[0]
-                if '/d/' in form_id:
-                    form_id = form_id.split('/d/')[-1].split('/')[0]
+            form_id = os.getenv("GOOGLE_FORM_ID", "").strip()
+
+            if not form_id:
+                results.append("⚠️ ID формы не указан в .env")
+            else:
+                # Если в .env указана ссылка, извлекаем ID.
+                if "/d/" in form_id:
+                    form_id = form_id.split("/d/", 1)[1].split("/", 1)[0]
+                elif "/e/" in form_id:
+                    form_id = form_id.split("/e/", 1)[1].split("/", 1)[0]
+
                 permission_form = {
-                    'type': 'user',
-                    'role': 'reader',
-                    'emailAddress': email,
-                    'view': 'published'
+                    "type": "user",
+                    "role": "reader",
+                    "emailAddress": email,
+                    "view": "published"
                 }
+
                 drive_service.permissions().create(
                     fileId=form_id,
                     body=permission_form,
                     sendNotificationEmail=False
                 ).execute()
+
                 results.append("✅ Доступ к форме (Респондент) выдан.")
-            else:
-                results.append("⚠️ ID формы не указан в .env")
         except Exception as e:
-            if 'already exists' in str(e).lower():
+            error_text = str(e)
+            if "already exists" in error_text.lower():
                 results.append("⚠️ Доступ к форме уже есть.")
-            elif 'File not found' in str(e):
+            elif "File not found" in error_text or "notFound" in error_text:
                 results.append("❌ Форма не найдена. Проверьте GOOGLE_FORM_ID.")
             else:
-                results.append(f"❌ Ошибка при выдаче доступа к форме: {str(e)}")
+                results.append(f"❌ Ошибка при выдаче доступа к форме: {error_text}")
+
+        has_error = any(result.startswith("❌") for result in results)
         embed = discord.Embed(
             title="🔑 Выдача доступа",
-            color=discord.Color.green(),
+            color=discord.Color.red() if has_error else discord.Color.green(),
             timestamp=datetime.datetime.now()
         )
         embed.add_field(name="Email", value=email, inline=False)
-        embed.add_field(name="Результат", value="\n".join(results), inline=False)
+        embed.add_field(name="Результат", value="\\n".join(results), inline=False)
         embed.set_footer(text=f"Выдал: {interaction.user.display_name}")
+
         await interaction.followup.send(embed=embed)
+
     except discord.errors.NotFound:
-        print("⚠️ Взаимодействие для выдатьдоступ истекло")
+        print("⚠️ Взаимодействие в выдатьдоступ истекло")
     except Exception as e:
         print(f"❌ Ошибка в выдатьдоступ: {e}")
-        await interaction.followup.send(f"❌ Ошибка: {e}")
+        try:
+            await interaction.followup.send(f"❌ Ошибка: {e}")
+        except discord.errors.NotFound:
+            pass
 
 # ============ АВТОМАТИЧЕСКОЕ ОБНОВЛЕНИЕ СОСТАВА ============
 
 async def update_staff_message():
     global staff_message_id, staff_list
+
     channel = bot.get_channel(staff_channel_id)
     if not channel:
+        print("⚠️ Канал состава не найден")
         return
+
+    # Сортировка изменяет staff_list, поэтому сразу сохраняем новое состояние.
     staff_list.sort(key=lambda x: POSITION_ORDER.get(x['position'], 99))
+    save_staff()
+
     if not staff_list:
-        content = "📋 СОСТАВ FT\n\nСотрудников пока нет"
+        content = "📋 СОСТАВ FT\\n\\nСотрудников пока нет"
     else:
         staff_text = ""
         for member in staff_list:
-            staff_text += f"• {member['nick']} — {member['position']}\n"
+            staff_text += f"• {member['nick']} — {member['position']}\\n"
+
         content = f"""📋 СОСТАВ FT
 
-```\n{staff_text}```
+```\\n{staff_text}```
 
 Общий состав: {len(staff_list)} человек
 
@@ -807,19 +838,21 @@ async def update_staff_message():
 https://docs.google.com/spreadsheets/d/1-3ER99-RpUkPdeRE4JC5s0KRnV1unqNnmNQhtf4J7a4/edit?pli=1&gid=624912206#gid=624912206
 
 <@&1328055611853635636>"""
+
     try:
         if staff_message_id:
             msg = await channel.fetch_message(staff_message_id)
             await msg.edit(content=content)
-        else:
-            async for msg in channel.history(limit=100):
-                if msg.author == bot.user and msg.content.startswith('📋 СОСТАВ FT'):
-                    staff_message_id = msg.id
-                    await msg.edit(content=content)
-                    return
-            msg = await channel.send(content)
-            staff_message_id = msg.id
-        save_staff()
+            return
+
+        async for msg in channel.history(limit=100):
+            if msg.author == bot.user and msg.content.startswith('📋 СОСТАВ FT'):
+                staff_message_id = msg.id
+                await msg.edit(content=content)
+                return
+
+        msg = await channel.send(content)
+        staff_message_id = msg.id
     except Exception as e:
         print(f"Ошибка обновления состава: {e}")
 
